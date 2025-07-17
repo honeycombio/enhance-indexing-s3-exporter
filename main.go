@@ -9,7 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	exporterpkg "github.com/honeycombio/enhance-indexing-s3-exporter/exporter"
+	debugpkg "github.com/honeycombio/enhance-indexing-s3-exporter/debug"
+	exporterpkg "github.com/honeycombio/enhance-indexing-s3-exporter/indexings3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
@@ -85,6 +86,7 @@ func getFactories() (otelcol.Factories, error) {
 	// Exporters
 	factories.Exporters = map[component.Type]exporter.Factory{
 		exporterpkg.NewFactory().Type(): exporterpkg.NewFactory(),
+		debugpkg.NewFactory().Type():    debugpkg.NewFactory(),
 	}
 
 	// Processors (empty for now)

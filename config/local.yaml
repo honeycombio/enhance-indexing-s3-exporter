@@ -5,6 +5,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
+  debug:
+    verbosity: detailed
   enhance-indexing-s3-exporter:
     s3uploader:
       region: 'us-east-1'
@@ -14,12 +16,9 @@ exporters:
 service:
   pipelines:
     logs/objectstorage:
-      receivers:
-        - otlp
-      exporters:
-        - enhance-indexing-s3-exporter
+      receivers: [otlp]
+      exporters: [enhance-indexing-s3-exporter, debug]
+
     traces/objectstorage:
-      receivers:
-        - otlp
-      exporters:
-        - enhance-indexing-s3-exporter
+      receivers: [otlp]
+      exporters: [enhance-indexing-s3-exporter, debug]
