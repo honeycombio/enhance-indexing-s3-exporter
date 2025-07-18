@@ -34,7 +34,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("region is required")
 	}
 	if c.S3Uploader.S3Bucket == "" && c.S3Uploader.Endpoint == "" {
-		return fmt.Errorf("s3_bucket or endpoint is required")
+		return fmt.Errorf("s3_bucket is required unless a custom endpoint is provided")
 	}
 
 	if c.S3Uploader.Compression != "" && c.S3Uploader.Compression != "gzip" && c.S3Uploader.Compression != "none" {

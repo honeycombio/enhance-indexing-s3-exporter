@@ -120,10 +120,10 @@ func (e *debugExporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 
 				if e.verbosity == configtelemetry.LevelDetailed {
 					fmt.Printf("      Attributes: %s\n", formatAttributes(log.Attributes()))
-					if log.TraceID().IsEmpty() == false {
+					if !log.TraceID().IsEmpty() {
 						fmt.Printf("      Trace ID: %s\n", log.TraceID().String())
 					}
-					if log.SpanID().IsEmpty() == false {
+					if !log.SpanID().IsEmpty() {
 						fmt.Printf("      Span ID: %s\n", log.SpanID().String())
 					}
 				}

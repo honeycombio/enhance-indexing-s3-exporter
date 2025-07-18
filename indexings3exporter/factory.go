@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	typeStr   = "enhanceindexings3exporter"
+	typeStr   = "enhance_indexing_s3_exporter"
 	stability = component.StabilityLevelAlpha
 )
 
