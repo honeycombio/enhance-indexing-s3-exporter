@@ -2,9 +2,7 @@ package exporter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -85,26 +83,4 @@ type EnhancedData struct {
 		SearchableFields []string `json:"searchable_fields,omitempty"`
 		Categories       []string `json:"categories,omitempty"`
 	} `json:"indexing_hints"`
-}
-
-func (e *enhanceIndexingS3Exporter) enhanceData(originalData interface{}, signalType string) ([]byte, error) {
-	enhanced := EnhancedData{
-		OriginalData: originalData,
-	}
-
-	enhanced.Metadata.SignalType = signalType
-	enhanced.Metadata.Timestamp = fmt.Sprintf("%d", time.Now().Unix())
-
-	switch signalType {
-	case "traces":
-		enhanced.IndexingHints.PrimaryKeys = []string{"trace_id", "span_id"}
-		enhanced.IndexingHints.SearchableFields = []string{"service_name", "operation_name", "status_code"}
-		enhanced.IndexingHints.Categories = []string{"tracing", "performance"}
-	case "logs":
-		enhanced.IndexingHints.PrimaryKeys = []string{"log_id", "timestamp"}
-		enhanced.IndexingHints.SearchableFields = []string{"level", "message", "source"}
-		enhanced.IndexingHints.Categories = []string{"logging", "debugging"}
-	}
-
-	return json.Marshal(enhanced)
 }
