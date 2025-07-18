@@ -32,26 +32,18 @@ func main() {
 		log.Fatalf("Failed to get factories: %v", err)
 	}
 
-	// Create the file provider for YAML configuration
-	fileProvider := fileprovider.New()
-
-	configProvider, err := otelcol.NewConfigProvider(otelcol.ConfigProviderSettings{
-		ResolverSettings: confmap.ResolverSettings{
-			URIs: []string{configPath},
-			Providers: map[string]confmap.Provider{
-				"file": fileProvider,
-			},
-		},
-	})
-	if err != nil {
-		log.Fatalf("Failed to create config provider: %v", err)
-	}
-
 	settings := otelcol.CollectorSettings{
 		Factories: func() (otelcol.Factories, error) {
 			return factories, nil
 		},
-		ConfigProvider: configProvider,
+		ConfigProviderSettings: otelcol.ConfigProviderSettings{
+			ResolverSettings: confmap.ResolverSettings{
+				URIs: []string{configPath},
+				ProviderFactories: []confmap.ProviderFactory{
+					fileprovider.NewFactory(),
+				},
+			},
+		},
 	}
 
 	collector, err := otelcol.NewCollector(settings)

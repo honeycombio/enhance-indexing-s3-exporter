@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -16,7 +17,7 @@ import (
 type debugExporter struct {
 	logger    *zap.Logger
 	config    *Config
-	verbosity string
+	verbosity configtelemetry.Level
 }
 
 // newDebugExporter creates a new debug exporter
@@ -30,7 +31,18 @@ func newDebugExporter(config *Config, logger *zap.Logger) *debugExporter {
 
 // start is called when the exporter starts
 func (e *debugExporter) start(ctx context.Context, host component.Host) error {
-	e.logger.Info("Debug exporter started", zap.String("verbosity", e.verbosity))
+	var verbosityStr string
+	switch e.verbosity {
+	case configtelemetry.LevelBasic:
+		verbosityStr = "basic"
+	case configtelemetry.LevelNormal:
+		verbosityStr = "normal"
+	case configtelemetry.LevelDetailed:
+		verbosityStr = "detailed"
+	default:
+		verbosityStr = "unknown"
+	}
+	e.logger.Info("Debug exporter started", zap.String("verbosity", verbosityStr))
 	return nil
 }
 
@@ -42,7 +54,7 @@ func (e *debugExporter) shutdown(ctx context.Context) error {
 
 // consumeTraces implements the traces consumer interface
 func (e *debugExporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	if e.verbosity == "basic" {
+	if e.verbosity == configtelemetry.LevelBasic {
 		fmt.Printf("DEBUG EXPORTER: Received %d traces\n", traces.ResourceSpans().Len())
 		return nil
 	}
@@ -52,7 +64,7 @@ func (e *debugExporter) consumeTraces(ctx context.Context, traces ptrace.Traces)
 		rs := traces.ResourceSpans().At(i)
 		fmt.Printf("Resource Span %d:\n", i+1)
 
-		if e.verbosity == "detailed" {
+		if e.verbosity == configtelemetry.LevelDetailed {
 			fmt.Printf("  Resource Attributes: %s\n", formatAttributes(rs.Resource().Attributes()))
 		}
 
@@ -65,7 +77,7 @@ func (e *debugExporter) consumeTraces(ctx context.Context, traces ptrace.Traces)
 				fmt.Printf("    Span %d: %s (trace_id: %s, span_id: %s)\n",
 					k+1, span.Name(), span.TraceID().String(), span.SpanID().String())
 
-				if e.verbosity == "detailed" {
+				if e.verbosity == configtelemetry.LevelDetailed {
 					fmt.Printf("      Attributes: %s\n", formatAttributes(span.Attributes()))
 					if span.Events().Len() > 0 {
 						fmt.Printf("      Events: %d\n", span.Events().Len())
@@ -83,7 +95,7 @@ func (e *debugExporter) consumeTraces(ctx context.Context, traces ptrace.Traces)
 
 // consumeLogs implements the logs consumer interface
 func (e *debugExporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
-	if e.verbosity == "basic" {
+	if e.verbosity == configtelemetry.LevelBasic {
 		fmt.Printf("DEBUG EXPORTER: Received %d logs\n", logs.ResourceLogs().Len())
 		return nil
 	}
@@ -93,7 +105,7 @@ func (e *debugExporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 		rl := logs.ResourceLogs().At(i)
 		fmt.Printf("Resource Logs %d:\n", i+1)
 
-		if e.verbosity == "detailed" {
+		if e.verbosity == configtelemetry.LevelDetailed {
 			fmt.Printf("  Resource Attributes: %s\n", formatAttributes(rl.Resource().Attributes()))
 		}
 
@@ -106,7 +118,7 @@ func (e *debugExporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 				fmt.Printf("    Log %d: %s (level: %s, timestamp: %s)\n",
 					k+1, log.Body().AsString(), log.SeverityText(), log.Timestamp().String())
 
-				if e.verbosity == "detailed" {
+				if e.verbosity == configtelemetry.LevelDetailed {
 					fmt.Printf("      Attributes: %s\n", formatAttributes(log.Attributes()))
 					if log.TraceID().IsEmpty() == false {
 						fmt.Printf("      Trace ID: %s\n", log.TraceID().String())

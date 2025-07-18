@@ -13,10 +13,12 @@ const (
 	stability = component.StabilityLevelAlpha
 )
 
+var componentType = component.MustNewType(typeStr)
+
 // NewFactory creates a new debug exporter factory
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		typeStr,
+		componentType,
 		CreateDefaultConfig,
 		exporter.WithTraces(createTracesExporter, stability),
 		exporter.WithLogs(createLogsExporter, stability),
@@ -26,43 +28,39 @@ func NewFactory() exporter.Factory {
 // createTracesExporter creates a traces exporter
 func createTracesExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	config := cfg.(*Config)
 
 	debugExporter := newDebugExporter(config, set.Logger)
 
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		set,
 		cfg,
 		debugExporter.consumeTraces,
 		exporterhelper.WithStart(debugExporter.start),
 		exporterhelper.WithShutdown(debugExporter.shutdown),
-		exporterhelper.WithQueue(config.QueueSettings),
-		exporterhelper.WithTimeout(config.TimeoutSettings),
 	)
 }
 
 // createLogsExporter creates a logs exporter
 func createLogsExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	config := cfg.(*Config)
 
 	debugExporter := newDebugExporter(config, set.Logger)
 
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		cfg,
 		debugExporter.consumeLogs,
 		exporterhelper.WithStart(debugExporter.start),
 		exporterhelper.WithShutdown(debugExporter.shutdown),
-		exporterhelper.WithQueue(config.QueueSettings),
-		exporterhelper.WithTimeout(config.TimeoutSettings),
 	)
 }

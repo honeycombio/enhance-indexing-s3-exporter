@@ -9,13 +9,15 @@ import (
 )
 
 const (
-	typeStr   = "enhance-indexing-s3-exporter"
+	typeStr   = "enhanceindexings3exporter"
 	stability = component.StabilityLevelAlpha
 )
 
+var componentType = component.MustNewType(typeStr)
+
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
-		typeStr,
+		componentType,
 		createDefaultConfig,
 		exporter.WithTraces(createTracesExporter, stability),
 		exporter.WithLogs(createLogsExporter, stability),
@@ -24,7 +26,7 @@ func NewFactory() exporter.Factory {
 
 func createTracesExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	config := cfg.(*Config)
@@ -34,21 +36,22 @@ func createTracesExporter(
 		return nil, err
 	}
 
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		set,
 		cfg,
 		s3Exporter.consumeTraces,
 		exporterhelper.WithStart(s3Exporter.start),
 		exporterhelper.WithShutdown(s3Exporter.shutdown),
-		exporterhelper.WithQueue(config.QueueSettings),
-		exporterhelper.WithTimeout(config.TimeoutSettings),
+		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewTracesQueueBatchSettings()),
+		exporterhelper.WithTimeout(config.TimeoutConfig),
+		exporterhelper.WithRetry(config.RetryConfig),
 	)
 }
 
 func createLogsExporter(
 	ctx context.Context,
-	set exporter.CreateSettings,
+	set exporter.Settings,
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	config := cfg.(*Config)
@@ -58,14 +61,15 @@ func createLogsExporter(
 		return nil, err
 	}
 
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		set,
 		cfg,
 		s3Exporter.consumeLogs,
 		exporterhelper.WithStart(s3Exporter.start),
 		exporterhelper.WithShutdown(s3Exporter.shutdown),
-		exporterhelper.WithQueue(config.QueueSettings),
-		exporterhelper.WithTimeout(config.TimeoutSettings),
+		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewLogsQueueBatchSettings()),
+		exporterhelper.WithTimeout(config.TimeoutConfig),
+		exporterhelper.WithRetry(config.RetryConfig),
 	)
 }

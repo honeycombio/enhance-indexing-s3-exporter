@@ -4,13 +4,15 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 type Config struct {
-	QueueSettings   exporterhelper.QueueSettings   `mapstructure:"sending_queue"`
-	TimeoutSettings exporterhelper.TimeoutSettings `mapstructure:",squash"`
-	S3Uploader      S3UploaderConfig               `mapstructure:"s3uploader"`
+	QueueBatchConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
+	RetryConfig      configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
+	S3Uploader       S3UploaderConfig                `mapstructure:"s3uploader"`
 }
 
 type S3UploaderConfig struct {
@@ -48,8 +50,9 @@ func (c *Config) Validate() error {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		QueueSettings:   exporterhelper.NewDefaultQueueSettings(),
-		TimeoutSettings: exporterhelper.NewDefaultTimeoutSettings(),
+		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
+		RetryConfig:      configretry.NewDefaultBackOffConfig(),
 		S3Uploader: S3UploaderConfig{
 			Region:      "us-east-1",
 			S3Partition: "minute",

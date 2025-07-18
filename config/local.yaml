@@ -7,7 +7,7 @@ receivers:
 exporters:
   debug:
     verbosity: detailed
-  enhance-indexing-s3-exporter:
+  enhanceindexings3exporter:
     s3uploader:
       region: 'us-east-1'
       s3_bucket: 'my-test-bucket'
@@ -17,8 +17,8 @@ service:
   pipelines:
     logs/objectstorage:
       receivers: [otlp]
-      exporters: [enhance-indexing-s3-exporter, debug]
+      exporters: [enhanceindexings3exporter, debug]
 
     traces/objectstorage:
       receivers: [otlp]
-      exporters: [enhance-indexing-s3-exporter, debug]
+      exporters: [enhanceindexings3exporter, debug]
