@@ -14,6 +14,7 @@ type Config struct {
 	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
 	RetryConfig      configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
 	S3Uploader       awss3exporter.S3UploaderConfig  `mapstructure:"s3uploader"`
+	MarshalerName    awss3exporter.MarshalerType     `mapstructure:"marshaler"`
 }
 
 func (c *Config) Validate() error {
@@ -32,6 +33,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("retry_mode must be 'standard' or 'adaptive', got: %s", c.S3Uploader.RetryMode)
 	}
 
+	if c.MarshalerName != awss3exporter.OtlpJSON && c.MarshalerName != awss3exporter.OtlpProtobuf {
+		return fmt.Errorf("marshaler must be 'otlp_json' or 'otlp_protobuf', got: %s", c.MarshalerName)
+	}
+
 	return nil
 }
 
@@ -48,5 +53,6 @@ func createDefaultConfig() component.Config {
 			RetryMaxAttempts:  3,
 			RetryMode:         "standard",
 		},
+		MarshalerName: awss3exporter.OtlpProtobuf,
 	}
 }

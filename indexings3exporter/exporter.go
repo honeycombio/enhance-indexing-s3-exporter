@@ -57,6 +57,9 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
+	// TODO: Encode the traces before writing to S3
+	// using the configured Config.MarshalerName
+
 	return e.s3Writer.WriteBuffer(ctx, buf, "traces")
 }
 
@@ -66,6 +69,9 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	if err != nil {
 		return fmt.Errorf("failed to marshal logs: %w", err)
 	}
+
+	// TODO: Encode the logs before writing to S3
+	// using the configured Config.MarshalerName
 
 	return e.s3Writer.WriteBuffer(ctx, buf, "logs")
 }
