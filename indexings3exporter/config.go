@@ -3,6 +3,7 @@ package exporter
 import (
 	"fmt"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -12,21 +13,7 @@ type Config struct {
 	QueueBatchConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
 	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
 	RetryConfig      configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	S3Uploader       S3UploaderConfig                `mapstructure:"s3uploader"`
-}
-
-type S3UploaderConfig struct {
-	Region           string `mapstructure:"region"`
-	S3Bucket         string `mapstructure:"s3_bucket"`
-	S3Prefix         string `mapstructure:"s3_prefix"`
-	S3Partition      string `mapstructure:"s3_partition"`
-	FilePrefix       string `mapstructure:"file_prefix"`
-	Endpoint         string `mapstructure:"endpoint"`
-	S3ForcePathStyle bool   `mapstructure:"s3_force_path_style"`
-	DisableSSL       bool   `mapstructure:"disable_ssl"`
-	Compression      string `mapstructure:"compression"`
-	MaxRetries       int    `mapstructure:"max_retries"`
-	RetryMode        string `mapstructure:"retry_mode"`
+	S3Uploader       awss3exporter.S3UploaderConfig  `mapstructure:"s3uploader"`
 }
 
 func (c *Config) Validate() error {
@@ -53,13 +40,13 @@ func createDefaultConfig() component.Config {
 		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		RetryConfig:      configretry.NewDefaultBackOffConfig(),
-		S3Uploader: S3UploaderConfig{
-			Region:      "us-east-1",
-			S3Partition: "minute",
-			FilePrefix:  "",
-			Compression: "gzip",
-			MaxRetries:  3,
-			RetryMode:   "standard",
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Region:            "us-east-1",
+			S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+			FilePrefix:        "",
+			Compression:       "gzip",
+			RetryMaxAttempts:  3,
+			RetryMode:         "standard",
 		},
 	}
 }

@@ -11,10 +11,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.84.0
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/timefmt-go v0.1.6
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.130.0
 	go.opentelemetry.io/collector/component v1.36.0
+	go.opentelemetry.io/collector/config/configretry v1.36.0
 	go.opentelemetry.io/collector/confmap v1.36.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.36.0
 	go.opentelemetry.io/collector/exporter v0.130.0
+	go.opentelemetry.io/collector/exporter/debugexporter v0.130.0
 	go.opentelemetry.io/collector/extension v1.36.0
 	go.opentelemetry.io/collector/otelcol v0.130.0
 	go.opentelemetry.io/collector/pdata v1.36.0
@@ -71,6 +74,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mostynb/go-grpc-compression v1.2.3 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/batchperresourceattr v0.130.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -83,6 +87,7 @@ require (
 	github.com/spf13/cobra v1.9.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/tilinna/clock v1.1.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -99,7 +104,6 @@ require (
 	go.opentelemetry.io/collector/config/confignet v1.36.0 // indirect
 	go.opentelemetry.io/collector/config/configopaque v1.36.0 // indirect
 	go.opentelemetry.io/collector/config/configoptional v0.130.0 // indirect
-	go.opentelemetry.io/collector/config/configretry v1.36.0 // indirect
 	go.opentelemetry.io/collector/config/configtelemetry v0.130.0 // indirect
 	go.opentelemetry.io/collector/config/configtls v1.36.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.130.0 // indirect
@@ -108,8 +112,10 @@ require (
 	go.opentelemetry.io/collector/connector/xconnector v0.130.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.36.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumererror v0.130.0 // indirect
+	go.opentelemetry.io/collector/consumer/consumererror/xconsumererror v0.130.0 // indirect
 	go.opentelemetry.io/collector/consumer/consumertest v0.130.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.130.0 // indirect
+	go.opentelemetry.io/collector/exporter/exporterhelper/xexporterhelper v0.130.0 // indirect
 	go.opentelemetry.io/collector/exporter/exportertest v0.130.0 // indirect
 	go.opentelemetry.io/collector/exporter/xexporter v0.130.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionauth v1.36.0 // indirect

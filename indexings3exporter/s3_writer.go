@@ -13,16 +13,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/itchyny/timefmt-go"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.uber.org/zap"
 )
 
 type S3Writer struct {
-	config   *S3UploaderConfig
+	config   *awss3exporter.S3UploaderConfig
 	uploader *manager.Uploader
 	logger   *zap.Logger
 }
 
-func NewS3Writer(config *S3UploaderConfig, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
+func NewS3Writer(config *awss3exporter.S3UploaderConfig, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
 	return &S3Writer{
 		config:   config,
 		uploader: manager.NewUploader(s3Client),
@@ -69,15 +70,7 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 func (w *S3Writer) generateKey(signalType string) string {
 	now := time.Now()
 
-	var timePath string
-	switch w.config.S3Partition {
-	case "hour":
-		timePath = timefmt.Format(now, "year=%Y/month=%m/day=%d/hour=%H")
-	case "minute":
-		timePath = timefmt.Format(now, "year=%Y/month=%m/day=%d/hour=%H/minute=%M")
-	default:
-		timePath = timefmt.Format(now, "year=%Y/month=%m/day=%d")
-	}
+	timePath := timefmt.Format(now, w.config.S3PartitionFormat)
 
 	prefix := w.config.S3Prefix
 	if prefix != "" && prefix[len(prefix)-1] != '/' {

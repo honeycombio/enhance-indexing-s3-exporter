@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	debugpkg "github.com/honeycombio/enhance-indexing-s3-exporter/debug"
 	exporterpkg "github.com/honeycombio/enhance-indexing-s3-exporter/indexings3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
 	"go.opentelemetry.io/collector/exporter"
+	debugpkg "go.opentelemetry.io/collector/exporter/debugexporter"
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor"
