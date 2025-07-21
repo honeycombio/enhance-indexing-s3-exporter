@@ -1,4 +1,4 @@
-package exporter
+package enhanceindexings3exporter
 
 import (
 	"fmt"
