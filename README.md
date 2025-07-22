@@ -1,10 +1,21 @@
-# Default Community Health Files
+# enhance-indexing-s3-exporter
 
-This repository contains default community health files for repositories in the Honeycomb organization and will automatically be picked up if they are not overwritten.
+## how to test
 
-More details on this repository structure can be found here: https://docs.github.com/en/github/building-a-strong-community/creating-a-default-community-health-file
+1. Start the collector
 
-# {project-name}
+```go
+go run ./cmd/otelcol --config config/local.yaml
+```
 
-<!-- OSS metadata badge - rename repo link and set status in OSSMETADATA -->
-<!-- [![OSS Lifecycle](https://img.shields.io/osslifecycle/honeycombio/{repo-name})](https://github.com/honeycombio/home/blob/main/honeycomb-oss-lifecycle-and-practices.md) -->
+2. Use a version of `otelgen` that can communicate with localhost port 4317. The direct docker version of otelgen may not work, you may need to install that via brew first
+
+```curl
+brew install krzko/tap/otelgen
+```
+
+Send a single log through the collector:
+
+```curl
+otelgen --otel-exporter-otlp-endpoint localhost:4317 --insecure logs single
+```
