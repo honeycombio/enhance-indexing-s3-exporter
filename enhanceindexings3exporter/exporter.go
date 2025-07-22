@@ -27,6 +27,8 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger) (*enhanceInde
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
+	e.logger.Info("Starting enhance indexing S3 exporter", zap.String("region", e.config.S3Uploader.Region))
+
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
@@ -51,6 +53,8 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
+	e.logger.Info("Consuming traces", zap.Int("spanCount", traces.SpanCount()))
+
 	marshaler := &ptrace.JSONMarshaler{}
 	buf, err := marshaler.MarshalTraces(traces)
 	if err != nil {
@@ -64,6 +68,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 }
 
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
+	e.logger.Info("Consuming logs", zap.Int("logRecordCount", logs.LogRecordCount()))
+
 	marshaler := &plog.JSONMarshaler{}
 	buf, err := marshaler.MarshalLogs(logs)
 	if err != nil {

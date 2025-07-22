@@ -10,10 +10,13 @@ exporters:
   enhance_indexing_s3_exporter:
     s3uploader:
       region: 'us-east-1'
-      s3_bucket: 'my-test-bucket'
-      s3_prefix: 'traces-and-logs'
+      s3_bucket: 'otel-demo-for-bulk-ingest'
+      s3_prefix: 'demo-traces/'
 
 service:
+  telemetry:
+    logs:
+      level: debug
   pipelines:
     logs/objectstorage:
       receivers: [otlp]
