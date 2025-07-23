@@ -17,7 +17,7 @@ service:
   telemetry:
     logs:
       level: info
-    pipelines:
+  pipelines:
     logs/objectstorage:
       receivers: [otlp]
       exporters: [enhance_indexing_s3_exporter, debug]
