@@ -34,6 +34,8 @@ func NewS3Writer(config *awss3exporter.S3UploaderConfig, s3Client *s3.Client, lo
 func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) error {
 	key := w.generateKey(signalType)
 
+	w.logger.Info("Starting S3 upload", zap.String("key", key), zap.String("signalType", signalType), zap.Int("bufferSize", len(buf)))
+
 	var reader io.Reader = bytes.NewReader(buf)
 
 	if w.config.Compression == "gzip" {
@@ -63,7 +65,7 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 		return fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	w.logger.Debug("Successfully uploaded to S3", zap.String("key", key))
+	w.logger.Info("Successfully uploaded to S3", zap.String("key", key))
 	return nil
 }
 
@@ -82,7 +84,8 @@ func (w *S3Writer) generateKey(signalType string) string {
 		filePrefix = signalType
 	}
 
-	filename := fmt.Sprintf("%s-%s.json", filePrefix, uuid.New().String())
+	// TODO: Add a suffix to the filename based on the exporter config's marshaler
+	filename := fmt.Sprintf("%s-%s.binp", filePrefix, uuid.New().String())
 	if w.config.Compression == "gzip" {
 		filename += ".gz"
 	}
