@@ -19,3 +19,7 @@ Send a single log through the collector:
 ```bash
 otelgen --otel-exporter-otlp-endpoint localhost:4317 --insecure logs single
 ```
+
+## using ocb & tilt
+
+ -see `TILT_README.md`
