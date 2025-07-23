@@ -14,6 +14,9 @@ exporters:
       s3_prefix: 'traces-and-logs'
 
 service:
+  telemetry:
+    logs:
+      level: info
   pipelines:
     logs/objectstorage:
       receivers: [otlp]

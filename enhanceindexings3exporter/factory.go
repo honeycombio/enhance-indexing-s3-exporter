@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.uber.org/zap"
 )
 
 const (
@@ -31,6 +32,8 @@ func createTracesExporter(
 ) (exporter.Traces, error) {
 	config := cfg.(*Config)
 
+	set.Logger.Info("Creating traces exporter", zap.String("componentID", set.ID.String()))
+
 	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger)
 	if err != nil {
 		return nil, err
@@ -55,6 +58,8 @@ func createLogsExporter(
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	config := cfg.(*Config)
+
+	set.Logger.Info("Creating logs exporter", zap.String("componentID", set.ID.String()))
 
 	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger)
 	if err != nil {
