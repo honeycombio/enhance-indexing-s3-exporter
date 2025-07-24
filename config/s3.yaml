@@ -12,6 +12,15 @@ exporters:
       region: 'us-east-1'
       s3_bucket: 'otel-demo-for-bulk-ingest'
       s3_prefix: 'demo-traces/'
+    sending_queue:
+        batch:
+            flush_timeout: 30s
+            max_size: 50000
+            min_size: 50000
+        enabled: true
+        queue_size: 500000
+        sizer: items
+    timeout: 30s
 
 service:
   telemetry:
