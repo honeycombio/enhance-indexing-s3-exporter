@@ -1,0 +1,74 @@
+services:
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - otelnet
+
+  otelcol:
+    build:
+      context: .
+      dockerfile: dockerfiles/otelcol.Dockerfile
+    container_name: otelcol
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+    ports:
+      - "4317:4317"
+    depends_on:
+      - minio
+    networks:
+      - otelnet
+    volumes:
+      - ./config/local.yaml:/etc/otelcol/config.yaml
+
+  otelgen_one_log:
+    image: ghcr.io/krzko/otelgen:latest
+    container_name: otelgen_one_log
+    depends_on:
+      - otelcol
+    command: >
+      --otel-exporter-otlp-endpoint otelcol:4317 --insecure logs single
+    networks:
+      - otelnet
+
+  otelgen_one_trace:
+    image: ghcr.io/krzko/otelgen:latest
+    container_name: otelgen_one_trace
+    depends_on:
+      - otelcol
+    command: >
+      --otel-exporter-otlp-endpoint otelcol:4317 --insecure traces single
+    networks:
+      - otelnet
+
+  otelgen_logs_stream:
+    image: ghcr.io/krzko/otelgen:latest
+    container_name: otelgen_logs_stream
+    depends_on:
+      - otelcol
+    command: >
+      --otel-exporter-otlp-endpoint otelcol:4317 --duration 10 --rate 1 --insecure logs multi
+    networks:
+      - otelnet
+
+  otelgen_traces_stream:
+    image: ghcr.io/krzko/otelgen:latest
+    container_name: otelgen_traces_stream
+    depends_on:
+      - otelcol
+    command: >
+      --otel-exporter-otlp-endpoint otelcol:4317 --duration 10 --rate 1 --insecure traces multi
+    networks:
+      - otelnet
+
+networks:
+  otelnet:
+    driver: bridge

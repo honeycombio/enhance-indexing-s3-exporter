@@ -1,0 +1,5 @@
+docker_compose('docker-compose.yml')
+dc_resource('otelgen_one_log', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
+dc_resource('otelgen_one_trace', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
+dc_resource('otelgen_logs_stream', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
+dc_resource('otelgen_traces_stream', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
