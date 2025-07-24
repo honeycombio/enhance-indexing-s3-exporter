@@ -1,0 +1,27 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: detailed
+  enhance_indexing_s3_exporter:
+    s3uploader:
+      region: 'us-east-1'
+      s3_bucket: 'otel-demo-for-bulk-ingest'
+      s3_prefix: 'demo-traces/'
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    logs/objectstorage:
+      receivers: [otlp]
+      exporters: [enhance_indexing_s3_exporter, debug]
+
+    traces/objectstorage:
+      receivers: [otlp]
+      exporters: [enhance_indexing_s3_exporter, debug]
