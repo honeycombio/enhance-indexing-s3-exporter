@@ -18,16 +18,18 @@ import (
 )
 
 type S3Writer struct {
-	config   *awss3exporter.S3UploaderConfig
-	uploader *manager.Uploader
-	logger   *zap.Logger
+	config    *awss3exporter.S3UploaderConfig
+	marshaler awss3exporter.MarshalerType
+	uploader  *manager.Uploader
+	logger    *zap.Logger
 }
 
-func NewS3Writer(config *awss3exporter.S3UploaderConfig, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
+func NewS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter.MarshalerType, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
 	return &S3Writer{
-		config:   config,
-		uploader: manager.NewUploader(s3Client),
-		logger:   logger,
+		config:    config,
+		marshaler: marshaler,
+		uploader:  manager.NewUploader(s3Client),
+		logger:    logger,
 	}
 }
 
@@ -70,11 +72,12 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 }
 
 func (w *S3Writer) generateKey(signalType string) string {
+	prefix := w.config.S3Prefix
+
 	now := time.Now()
 
 	timePath := timefmt.Format(now, w.config.S3PartitionFormat)
 
-	prefix := w.config.S3Prefix
 	if prefix != "" && prefix[len(prefix)-1] != '/' {
 		prefix += "/"
 	}
@@ -84,8 +87,14 @@ func (w *S3Writer) generateKey(signalType string) string {
 		filePrefix = signalType
 	}
 
-	// TODO: Add a suffix to the filename based on the exporter config's marshaler
-	filename := fmt.Sprintf("%s-%s.binp", filePrefix, uuid.New().String())
+	var marshalerName string
+	if w.marshaler == awss3exporter.OtlpJSON {
+		marshalerName = "json"
+	} else {
+		marshalerName = "binp"
+	}
+
+	filename := fmt.Sprintf("%s-%s.%s", filePrefix, uuid.New().String(), marshalerName)
 	if w.config.Compression == "gzip" {
 		filename += ".gz"
 	}
