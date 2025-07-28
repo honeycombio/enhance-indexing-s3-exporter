@@ -26,7 +26,7 @@ exporters:
     timeout: 30s
     index:
       enabled: true
-      indexed_fields: ['service.name', 'span.name', 'trace.id', 'log.level', 'source']
+      indexed_fields: ['service.instance.id']
 
 service:
   telemetry:

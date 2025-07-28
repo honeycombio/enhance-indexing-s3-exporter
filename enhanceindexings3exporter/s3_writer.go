@@ -33,8 +33,17 @@ func NewS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter
 	}
 }
 
-func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) error {
-	key := w.generateKey(signalType)
+func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) (string, error) {
+	return w.WriteBufferWithIndex(ctx, buf, signalType, "")
+}
+
+func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalType string, indexKey string) (string, error) {
+	var key string
+	if indexKey != "" {
+		key = indexKey
+	} else {
+		key = w.generateKey(signalType)
+	}
 
 	w.logger.Info("Starting S3 upload", zap.String("key", key), zap.String("signalType", signalType), zap.Int("bufferSize", len(buf)))
 
@@ -44,10 +53,10 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 		var compressedBuf bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressedBuf)
 		if _, err := gzipWriter.Write(buf); err != nil {
-			return fmt.Errorf("failed to compress data: %w", err)
+			return "", fmt.Errorf("failed to compress data: %w", err)
 		}
 		if err := gzipWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close gzip writer: %w", err)
+			return "", fmt.Errorf("failed to close gzip writer: %w", err)
 		}
 		reader = &compressedBuf
 	}
@@ -64,11 +73,11 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 
 	_, err := w.uploader.Upload(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
+		return "", fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
 	w.logger.Info("Successfully uploaded to S3", zap.String("key", key))
-	return nil
+	return key, nil
 }
 
 func (w *S3Writer) generateKey(signalType string) string {

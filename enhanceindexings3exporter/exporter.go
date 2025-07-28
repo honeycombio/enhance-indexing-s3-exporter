@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,11 +21,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// MinuteIndexBatch holds index data for one minute period
+type MinuteIndexBatch struct {
+	minute       string                       // "year=2025/month=07/day=28/hour=12/minute=00"
+	fieldIndexes map[string]map[string]string // field_name -> {field_value -> s3_key}
+}
+
 type enhanceIndexingS3Exporter struct {
-	config       *Config
-	logger       *zap.Logger
-	s3Writer     *S3Writer
-	indexBuilder *IndexBuilder
+	config        *Config
+	logger        *zap.Logger
+	s3Writer      *S3Writer
+	currentMinute string
+	currentBatch  *MinuteIndexBatch
+	minuteTimer   *time.Timer
+	indexMutex    sync.RWMutex
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger) (*enhanceIndexingS3Exporter, error) {
@@ -76,93 +85,200 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	// Initialize index builder
-	e.indexBuilder = NewIndexBuilder()
+	// Start minute boundary timer if indexing is enabled
+	if e.config.IndexConfig.Enabled {
+		e.startMinuteBoundaryTimer(ctx)
+	}
 
 	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
+	// Stop the minute timer and upload any pending indexes
+	if e.minuteTimer != nil {
+		e.minuteTimer.Stop()
+	}
+
+	// Upload any remaining batch data
+	e.indexMutex.Lock()
+	if e.currentBatch != nil {
+		batch := e.currentBatch
+		e.currentBatch = nil
+		e.indexMutex.Unlock()
+		e.uploadBatch(context.Background(), batch)
+	} else {
+		e.indexMutex.Unlock()
+	}
+
 	return nil
 }
 
-func (e *enhanceIndexingS3Exporter) uploadIndex(ctx context.Context, indexData []IndexEntry) error {
-	e.logger.Info("Uploading index")
-	if len(indexData) == 0 {
-		e.logger.Info("No index data to upload")
-		return nil
-	}
+// startMinuteBoundaryTimer starts a timer that triggers at minute boundaries
+func (e *enhanceIndexingS3Exporter) startMinuteBoundaryTimer(ctx context.Context) {
+	now := time.Now()
+	nextMinute := now.Truncate(time.Minute).Add(time.Minute)
+	initialDelay := nextMinute.Sub(now)
 
-	index, err := json.Marshal(indexData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal index: %w", err)
-	}
+	e.logger.Info("Starting minute boundary timer",
+		zap.Duration("initialDelay", initialDelay),
+		zap.Time("nextMinuteBoundary", nextMinute))
 
-	return e.s3Writer.WriteBuffer(ctx, index, "index")
+	e.minuteTimer = time.AfterFunc(initialDelay, func() {
+		e.onMinuteBoundary(ctx)
+
+		// Set up recurring timer for every minute
+		ticker := time.NewTicker(time.Minute)
+		go func() {
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					e.onMinuteBoundary(ctx)
+				}
+			}
+		}()
+	})
 }
 
-func (e *enhanceIndexingS3Exporter) extractIndexFields(traces ptrace.Traces, s3Location string) []IndexEntry {
-	var entries []IndexEntry
+// onMinuteBoundary is called when the clock crosses to a new minute
+func (e *enhanceIndexingS3Exporter) onMinuteBoundary(ctx context.Context) {
+	e.logger.Info("Minute boundary reached, uploading indexes")
 
-	for i := 0; i < traces.ResourceSpans().Len(); i++ {
-		rs := traces.ResourceSpans().At(i)
+	e.indexMutex.Lock()
+	if e.currentBatch != nil {
+		batch := e.currentBatch
+		e.currentBatch = nil
+		e.currentMinute = ""
+		e.indexMutex.Unlock()
 
-		// Extract service name
-		if serviceName, ok := rs.Resource().Attributes().Get("service.name"); ok {
-			entries = append(entries, IndexEntry{
-				FieldName:  "service.name",
-				FieldValue: serviceName.AsString(),
-				S3Location: s3Location,
-				SignalType: "traces",
-				Timestamp:  time.Now(),
-				Count:      1,
-			})
+		// Upload the completed minute's indexes
+		go e.uploadBatch(ctx, batch)
+	} else {
+		e.indexMutex.Unlock()
+	}
+}
+
+// addToCurrentIndex adds trace data to the current minute's index batch
+func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Key string) {
+	e.indexMutex.Lock()
+	defer e.indexMutex.Unlock()
+
+	// Extract minute path from s3Key
+	minute := filepath.Dir(s3Key)
+
+	// Check if we need to start a new minute batch
+	if e.currentMinute != minute {
+		// Upload previous minute's indexes if they exist
+		if e.currentBatch != nil {
+			go e.uploadBatch(context.Background(), e.currentBatch)
 		}
 
+		// Start new minute batch
+		e.currentMinute = minute
+		e.currentBatch = &MinuteIndexBatch{
+			minute:       minute,
+			fieldIndexes: make(map[string]map[string]string),
+		}
+
+		// Initialize maps for each indexed field
+		for _, fieldName := range e.config.IndexConfig.IndexedFields {
+			e.currentBatch.fieldIndexes[fieldName] = make(map[string]string)
+		}
+		e.currentBatch.fieldIndexes["trace_id"] = make(map[string]string) // Always index trace_id
+	}
+
+	// Extract and add field values to current batch
+	for i := 0; i < traces.ResourceSpans().Len(); i++ {
+		rs := traces.ResourceSpans().At(i)
 		for j := 0; j < rs.ScopeSpans().Len(); j++ {
 			ss := rs.ScopeSpans().At(j)
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
 
-				// Extract span name
-				entries = append(entries, IndexEntry{
-					FieldName:  "span.name",
-					FieldValue: span.Name(),
-					S3Location: s3Location,
-					SignalType: "traces",
-					Timestamp:  time.Now(),
-					Count:      1,
-				})
+				// Always index trace ID
+				e.currentBatch.fieldIndexes["trace_id"][span.TraceID().String()] = s3Key
 
-				// Extract trace ID
-				entries = append(entries, IndexEntry{
-					FieldName:  "trace.id",
-					FieldValue: span.TraceID().String(),
-					S3Location: s3Location,
-					SignalType: "traces",
-					Timestamp:  time.Now(),
-					Count:      1,
-				})
-
-				// Extract custom attributes based on configuration
-				span.Attributes().Range(func(k string, v pcommon.Value) bool {
-					if e.config.IndexConfig.Enabled && slices.Contains(e.config.IndexConfig.IndexedFields, k) {
-						entries = append(entries, IndexEntry{
-							FieldName:  k,
-							FieldValue: v.AsString(),
-							S3Location: s3Location,
-							SignalType: "traces",
-							Timestamp:  time.Now(),
-							Count:      1,
-						})
+				// Index configured fields
+				span.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
+					if fieldMap, exists := e.currentBatch.fieldIndexes[attrKey]; exists {
+						fieldMap[v.AsString()] = s3Key
 					}
 					return true
 				})
 			}
 		}
 	}
+}
 
-	return entries
+// marshalIndex marshals the index using the configured marshaler type
+func (e *enhanceIndexingS3Exporter) marshalIndex(fieldIndex map[string]string) ([]byte, error) {
+	if e.config.MarshalerName == awss3exporter.OtlpJSON {
+		return json.Marshal(fieldIndex)
+	} else {
+		// For protobuf, we need to manually encode since index isn't an OTel signal
+		// We'll create a simple protobuf-compatible format
+		return e.marshalIndexAsProtobuf(fieldIndex)
+	}
+}
+
+// marshalIndexAsProtobuf manually encodes the index as protobuf
+func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldIndex map[string]string) ([]byte, error) {
+	// For now, we'll use a simple approach: encode as JSON first, then wrap in a protobuf-like structure
+	// In a production environment, you would define a proper .proto file and generate Go structs
+	jsonData, err := json.Marshal(fieldIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Simple protobuf-like encoding: length-prefixed JSON data
+	// This is a simplified approach - in production you'd use proper protobuf definitions
+	result := make([]byte, 4+len(jsonData))
+	// Write length as 4-byte big-endian integer
+	result[0] = byte(len(jsonData) >> 24)
+	result[1] = byte(len(jsonData) >> 16)
+	result[2] = byte(len(jsonData) >> 8)
+	result[3] = byte(len(jsonData))
+	// Write JSON data
+	copy(result[4:], jsonData)
+
+	return result, nil
+}
+
+// uploadBatch uploads all index files for a completed minute batch
+func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *MinuteIndexBatch) {
+	for fieldName, fieldIndex := range batch.fieldIndexes {
+		if len(fieldIndex) == 0 {
+			continue
+		}
+
+		indexData, err := e.marshalIndex(fieldIndex)
+		if err != nil {
+			e.logger.Error("failed to marshal index", zap.Error(err), zap.String("field", fieldName))
+			continue
+		}
+
+		// Determine file extension based on marshaler
+		var fileExt string
+		if e.config.MarshalerName == awss3exporter.OtlpJSON {
+			fileExt = "json"
+		} else {
+			fileExt = "binpb" // binary protobuf
+		}
+
+		indexKey := fmt.Sprintf("%s/index-%s.%s", batch.minute, fieldName, fileExt)
+		if e.config.S3Uploader.Compression == "gzip" {
+			indexKey += ".gz"
+		}
+
+		_, err = e.s3Writer.WriteBufferWithIndex(ctx, indexData, "index", indexKey)
+		if err != nil {
+			e.logger.Error("failed to upload index", zap.Error(err), zap.String("field", fieldName))
+		} else {
+			e.logger.Info("uploaded index", zap.String("field", fieldName), zap.String("key", indexKey), zap.String("format", string(e.config.MarshalerName)))
+		}
+	}
 }
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
@@ -180,18 +296,18 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
-	// Extract index entries and prepare index for upload if enabled
-	var indexData []IndexEntry
-	if e.config.IndexConfig.Enabled {
-		indexData = e.extractIndexFields(traces, e.config.S3Uploader.S3Prefix)
-		e.indexBuilder.AddEntries(indexData)
-		if err := e.uploadIndex(ctx, indexData); err != nil {
-			e.logger.Error("failed to upload index", zap.Error(err))
-		}
+	e.logger.Info("Uploading traces", zap.Int("traceSpanCount", traces.SpanCount()))
+	s3Key, err := e.s3Writer.WriteBuffer(ctx, buf, "traces")
+	if err != nil {
+		return err
 	}
 
-	e.logger.Info("Uploading traces", zap.Int("traceSpanCount", traces.SpanCount()))
-	return e.s3Writer.WriteBuffer(ctx, buf, "traces")
+	// Add to current index batch if enabled
+	if e.config.IndexConfig.Enabled {
+		e.addToCurrentIndex(traces, s3Key)
+	}
+
+	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
@@ -212,34 +328,6 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 
 	e.logger.Info("Uploading logs", zap.Int("logRecordCount", logs.LogRecordCount()))
-	return e.s3Writer.WriteBuffer(ctx, buf, "logs")
-}
-
-type IndexEntry struct {
-	FieldName  string    `json:"field_name"`
-	FieldValue string    `json:"field_value"`
-	S3Location string    `json:"s3_location"`
-	SignalType string    `json:"signal_type"`
-	Timestamp  time.Time `json:"timestamp"`
-	Count      int       `json:"count"`
-}
-
-type IndexBuilder struct {
-	entries map[string]*IndexEntry
-	mutex   sync.RWMutex
-}
-
-func NewIndexBuilder() *IndexBuilder {
-	return &IndexBuilder{
-		entries: make(map[string]*IndexEntry),
-	}
-}
-
-func (b *IndexBuilder) AddEntries(entries []IndexEntry) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	for _, entry := range entries {
-		b.entries[entry.FieldName] = &entry
-	}
+	_, err = e.s3Writer.WriteBuffer(ctx, buf, "logs")
+	return err
 }
