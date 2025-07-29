@@ -21,9 +21,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type IndexField struct {
+	FieldValue string `json:"field_value"`
+	S3Location string `json:"s3_location"`
+}
+
 // MinuteIndexBatch holds index data for one minute period
 type MinuteIndexBatch struct {
-	minute       string                       // "year=2025/month=07/day=28/hour=12/minute=00"
+	minute       string                       // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
 	fieldIndexes map[string]map[string]string // field_name -> {field_value -> s3_key}
 }
 
