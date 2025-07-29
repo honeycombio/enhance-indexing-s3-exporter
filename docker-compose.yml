@@ -55,7 +55,7 @@ services:
     depends_on:
       - otelcol
     command: >
-      --otel-exporter-otlp-endpoint otelcol:4317 --duration 10 --rate 1 --insecure logs multi
+      --otel-exporter-otlp-endpoint otelcol:4317 --insecure --rate 50 logs multi --workers 20 --number 5000
     networks:
       - otelnet
 
@@ -65,7 +65,7 @@ services:
     depends_on:
       - otelcol
     command: >
-      --otel-exporter-otlp-endpoint otelcol:4317 --duration 10 --rate 1 --insecure traces multi
+      --otel-exporter-otlp-endpoint otelcol:4317 --insecure --rate 50 traces multi --number-traces 5000 --scenarios microservices --workers 20
     networks:
       - otelnet
 
