@@ -3,7 +3,6 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/smithy-go"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -72,29 +70,7 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 		return fmt.Errorf("S3 bucket name is empty")
 	}
 
-	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(bucket),
-	})
-
-	// Continue if the bucket exists
-	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) {
-			if apiErr.ErrorCode() != "BucketAlreadyOwnedByYou" && apiErr.ErrorCode() != "BucketAlreadyExists" {
-				return fmt.Errorf("failed to create bucket: %w", err)
-			}
-		} else {
-			return fmt.Errorf("failed to create bucket: %w", err)
-		}
-	}
-
-	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
-
-	// Start minute boundary timer if indexing is enabled
-	if e.config.IndexConfig.Enabled {
-		e.startMinuteBoundaryTimer(ctx)
-	}
-
+	e.s3Writer = NewS3Writer(&e.config.S3Uploader, s3Client, e.logger)
 	return nil
 }
 
