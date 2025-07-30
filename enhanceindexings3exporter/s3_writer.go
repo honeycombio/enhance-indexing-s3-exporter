@@ -83,7 +83,7 @@ func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalT
 func (w *S3Writer) generateKey(signalType string) string {
 	prefix := w.config.S3Prefix
 
-	now := time.Now()
+	now := time.Now().UTC()
 
 	timePath := timefmt.Format(now, w.config.S3PartitionFormat)
 
