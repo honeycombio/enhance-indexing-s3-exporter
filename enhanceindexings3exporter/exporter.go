@@ -70,7 +70,13 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 		return fmt.Errorf("S3 bucket name is empty")
 	}
 
-	e.s3Writer = NewS3Writer(&e.config.S3Uploader, s3Client, e.logger)
+	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
+
+	// Start minute boundary timer if indexing is enabled
+	if e.config.IndexConfig.Enabled {
+		e.startMinuteBoundaryTimer(ctx)
+	}
+
 	return nil
 }
 
