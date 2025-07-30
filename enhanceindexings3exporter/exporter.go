@@ -254,7 +254,7 @@ func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *Minu
 			fileExt = "binpb" // binary protobuf
 		}
 
-		indexKey := fmt.Sprintf("%s/index-%s.%s", batch.minute, fieldName, fileExt)
+		indexKey := fmt.Sprintf("%s/index_%s.%s", batch.minute, fieldName, fileExt)
 		if e.config.S3Uploader.Compression == "gzip" {
 			indexKey += ".gz"
 		}

@@ -103,7 +103,7 @@ func (w *S3Writer) generateKey(signalType string) string {
 		marshalerName = "binp"
 	}
 
-	filename := fmt.Sprintf("%s-%s.%s", filePrefix, uuid.New().String(), marshalerName)
+	filename := fmt.Sprintf("%s_%s.%s", filePrefix, uuid.New().String(), marshalerName)
 	if w.config.Compression == "gzip" {
 		filename += ".gz"
 	}
