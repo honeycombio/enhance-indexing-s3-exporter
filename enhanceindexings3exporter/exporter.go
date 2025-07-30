@@ -19,15 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
-type IndexField struct {
-	FieldValue string `json:"field_value"`
-	S3Location string `json:"s3_location"`
-}
-
-// MinuteIndexBatch holds index data for one minute period
+// MinuteIndexBatch holds index data for a one minute period
 type MinuteIndexBatch struct {
-	minute       string                       // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
-	fieldIndexes map[string]map[string]string // field_name -> {field_value -> s3_key}
+	minute       string                         // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
+	fieldIndexes map[string]map[string][]string // field_name -> {field_value -> slice of s3 keys}
 }
 
 type enhanceIndexingS3Exporter struct {
@@ -166,14 +161,14 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 		e.currentMinute = minute
 		e.currentBatch = &MinuteIndexBatch{
 			minute:       minute,
-			fieldIndexes: make(map[string]map[string]string),
+			fieldIndexes: make(map[string]map[string][]string),
 		}
 
 		// Initialize maps for each indexed field
 		for _, fieldName := range e.config.IndexConfig.IndexedFields {
-			e.currentBatch.fieldIndexes[fieldName] = make(map[string]string)
+			e.currentBatch.fieldIndexes[fieldName] = make(map[string][]string)
 		}
-		e.currentBatch.fieldIndexes["trace_id"] = make(map[string]string) // Always index trace_id
+		e.currentBatch.fieldIndexes["trace_id"] = make(map[string][]string) // Always index trace_id
 	}
 
 	// Extract and add field values to current batch
@@ -185,12 +180,15 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 				span := ss.Spans().At(k)
 
 				// Always index trace ID
-				e.currentBatch.fieldIndexes["trace_id"][span.TraceID().String()] = s3Key
+				traceID := span.TraceID().String()
+				// Update list of s3 keys for this trace ID
+				e.currentBatch.fieldIndexes["trace_id"][traceID] = append(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key)
 
 				// Index configured fields
 				span.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
+					// Update list of s3 keys for this field value
 					if fieldMap, exists := e.currentBatch.fieldIndexes[attrKey]; exists {
-						fieldMap[v.AsString()] = s3Key
+						fieldMap[v.AsString()] = append(fieldMap[v.AsString()], s3Key)
 					}
 					return true
 				})
@@ -200,7 +198,7 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 }
 
 // marshalIndex marshals the index using the configured marshaler type
-func (e *enhanceIndexingS3Exporter) marshalIndex(fieldIndex map[string]string) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndex(fieldIndex map[string][]string) ([]byte, error) {
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
 		return json.Marshal(fieldIndex)
 	} else {
@@ -211,7 +209,7 @@ func (e *enhanceIndexingS3Exporter) marshalIndex(fieldIndex map[string]string) (
 }
 
 // marshalIndexAsProtobuf manually encodes the index as protobuf
-func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldIndex map[string]string) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldIndex map[string][]string) ([]byte, error) {
 	// For now, we'll use a simple approach: encode as JSON first, then wrap in a protobuf-like structure
 	// In a production environment, you would define a proper .proto file and generate Go structs
 	jsonData, err := json.Marshal(fieldIndex)
