@@ -12,6 +12,20 @@ services:
     networks:
       - otelnet
 
+  createbucket:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb myminio/my-test-bucket;
+      exit 0;
+      "
+    networks:
+      - otelnet
+
   otelcol:
     build:
       context: .
