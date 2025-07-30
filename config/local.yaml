@@ -11,6 +11,7 @@ exporters:
     s3uploader:
       endpoint: 'http://minio:9000/'
       region: 'us-east-1'
+      # bucket is created by createbucket service in docker-compose.yml
       s3_bucket: 'my-test-bucket'
       s3_prefix: 'traces-and-logs'
       s3_force_path_style: true
