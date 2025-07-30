@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -164,11 +165,13 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 			fieldIndexes: make(map[string]map[string][]string),
 		}
 
+		// Always index trace_id
+		e.currentBatch.fieldIndexes["trace_id"] = make(map[string][]string)
+
 		// Initialize maps for each indexed field
 		for _, fieldName := range e.config.IndexConfig.IndexedFields {
 			e.currentBatch.fieldIndexes[fieldName] = make(map[string][]string)
 		}
-		e.currentBatch.fieldIndexes["trace_id"] = make(map[string][]string) // Always index trace_id
 	}
 
 	// Extract and add field values to current batch
@@ -181,20 +184,34 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 
 				// Always index trace ID
 				traceID := span.TraceID().String()
-				// Update list of s3 keys for this trace ID
-				e.currentBatch.fieldIndexes["trace_id"][traceID] = append(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key)
+				if !findS3Key(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key) {
+					e.currentBatch.fieldIndexes["trace_id"][traceID] = append(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key)
+				}
 
 				// Index configured fields
 				span.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
-					// Update list of s3 keys for this field value
-					if fieldMap, exists := e.currentBatch.fieldIndexes[attrKey]; exists {
-						fieldMap[v.AsString()] = append(fieldMap[v.AsString()], s3Key)
+					// Update list of s3 keys for this field value, if it is configured to be indexed
+					if slices.Contains(e.config.IndexConfig.IndexedFields, attrKey) {
+						if !findS3Key(e.currentBatch.fieldIndexes[attrKey][v.AsString()], s3Key) {
+							e.currentBatch.fieldIndexes[attrKey][v.AsString()] = append(e.currentBatch.fieldIndexes[attrKey][v.AsString()], s3Key)
+						}
 					}
+
 					return true
 				})
 			}
 		}
 	}
+}
+
+func findS3Key(s3Keys []string, s3Key string) bool {
+	for _, existingS3Key := range s3Keys {
+		if existingS3Key == s3Key {
+			return true
+		}
+	}
+
+	return false
 }
 
 // marshalIndex marshals the index using the configured marshaler type
