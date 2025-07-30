@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -88,8 +89,10 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 		batch := e.currentBatch
 		e.currentBatch = nil
 		e.indexMutex.Unlock()
+		e.logger.Info("Uploading remaining index data")
 		e.uploadBatch(context.Background(), batch)
 	} else {
+		e.logger.Info("No index data to upload")
 		e.indexMutex.Unlock()
 	}
 
@@ -139,6 +142,7 @@ func (e *enhanceIndexingS3Exporter) onMinuteBoundary(ctx context.Context) {
 		// Upload the completed minute's indexes
 		go e.uploadBatch(ctx, batch)
 	} else {
+		e.logger.Info("No index data to upload")
 		e.indexMutex.Unlock()
 	}
 }
@@ -154,8 +158,11 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 	// Check if we need to start a new minute batch
 	if e.currentMinute != minute {
 		// Upload previous minute's indexes if they exist
+		e.logger.Info("Uploading previous minute's indexes")
 		if e.currentBatch != nil {
 			go e.uploadBatch(context.Background(), e.currentBatch)
+		} else {
+			e.logger.Info("No index data to upload")
 		}
 
 		// Start new minute batch
@@ -269,7 +276,7 @@ func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *Minu
 			fileExt = "binpb" // binary protobuf
 		}
 
-		indexKey := fmt.Sprintf("%s/index_%s.%s", batch.minute, fieldName, fileExt)
+		indexKey := fmt.Sprintf("%s/index_%s_%s.%s", batch.minute, fieldName, uuid.New().String(), fileExt)
 		if e.config.S3Uploader.Compression == "gzip" {
 			indexKey += ".gz"
 		}
