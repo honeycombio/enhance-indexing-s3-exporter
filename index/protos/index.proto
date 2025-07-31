@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package index;
+
+import "gogoproto/gogo.proto";
+
+option (gogoproto.goproto_getters_all) = false;
+
+// Index is the list of S3Keys for each value of a single indexed field.
+message Index {
+    string field_name = 1;
+    map<string, S3Keys> indexed_values = 2;
+}
+
+// S3Keys is the list of S3 files that correspond to a single value.
+message S3Keys {
+    repeated string files = 2;
+}
