@@ -21,8 +21,8 @@ type Config struct {
 }
 
 type IndexConfig struct {
-	Enabled       bool     `mapstructure:"enabled"`
-	IndexedFields []string `mapstructure:"indexed_fields"`
+	Enabled       bool        `mapstructure:"enabled"`
+	IndexedFields []fieldName `mapstructure:"indexed_fields"`
 }
 
 func (c *Config) Validate() error {
@@ -64,7 +64,7 @@ func createDefaultConfig() component.Config {
 		MarshalerName: awss3exporter.OtlpProtobuf,
 		IndexConfig: IndexConfig{
 			Enabled:       false,
-			IndexedFields: []string{},
+			IndexedFields: []fieldName{},
 		},
 	}
 }

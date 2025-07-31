@@ -21,10 +21,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type fieldName string
+type fieldValue string
+type fieldS3Keys []string
+
 // MinuteIndexBatch holds index data for a one minute period
 type MinuteIndexBatch struct {
-	minute       string                         // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
-	fieldIndexes map[string]map[string][]string // field_name -> {field_value -> slice of s3 keys}
+	minute       string                                   // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
+	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys // field_name -> {field_value -> slice of s3 keys}
 }
 
 type enhanceIndexingS3Exporter struct {
@@ -169,15 +173,15 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 		e.currentMinute = minute
 		e.currentBatch = &MinuteIndexBatch{
 			minute:       minute,
-			fieldIndexes: make(map[string]map[string][]string),
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
 		}
 
 		// Always index trace_id
-		e.currentBatch.fieldIndexes["trace_id"] = make(map[string][]string)
+		e.currentBatch.fieldIndexes["trace_id"] = make(map[fieldValue]fieldS3Keys)
 
 		// Initialize maps for each indexed field
 		for _, fieldName := range e.config.IndexConfig.IndexedFields {
-			e.currentBatch.fieldIndexes[fieldName] = make(map[string][]string)
+			e.currentBatch.fieldIndexes[fieldName] = make(map[fieldValue]fieldS3Keys)
 		}
 	}
 
@@ -189,18 +193,24 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
 
-				// Always index trace ID
+				// trace id is always indexed
 				traceID := span.TraceID().String()
-				if !findS3Key(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key) {
-					e.currentBatch.fieldIndexes["trace_id"][traceID] = append(e.currentBatch.fieldIndexes["trace_id"][traceID], s3Key)
+				traceIDFv := fieldValue(traceID)
+				traceIDFn := fieldName("trace_id")
+				// Append the S3 key to the trace id field index if it is not already present
+				if !slices.Contains(e.currentBatch.fieldIndexes[traceIDFn][traceIDFv], s3Key) {
+					e.currentBatch.fieldIndexes[traceIDFn][traceIDFv] = append(e.currentBatch.fieldIndexes[traceIDFn][traceIDFv], s3Key)
 				}
 
 				// Index configured fields
 				span.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
 					// Update list of s3 keys for this field value, if it is configured to be indexed
-					if slices.Contains(e.config.IndexConfig.IndexedFields, attrKey) {
-						if !findS3Key(e.currentBatch.fieldIndexes[attrKey][v.AsString()], s3Key) {
-							e.currentBatch.fieldIndexes[attrKey][v.AsString()] = append(e.currentBatch.fieldIndexes[attrKey][v.AsString()], s3Key)
+					if slices.Contains(e.config.IndexConfig.IndexedFields, fieldName(attrKey)) {
+						fn := fieldName(attrKey)
+						fv := fieldValue(v.AsString())
+						// Append the S3 key to the field value index if it is not already present
+						if !slices.Contains(e.currentBatch.fieldIndexes[fn][fv], s3Key) {
+							e.currentBatch.fieldIndexes[fn][fv] = append(e.currentBatch.fieldIndexes[fn][fv], s3Key)
 						}
 					}
 
@@ -211,32 +221,22 @@ func (e *enhanceIndexingS3Exporter) addToCurrentIndex(traces ptrace.Traces, s3Ke
 	}
 }
 
-func findS3Key(s3Keys []string, s3Key string) bool {
-	for _, existingS3Key := range s3Keys {
-		if existingS3Key == s3Key {
-			return true
-		}
-	}
-
-	return false
-}
-
 // marshalIndex marshals the index using the configured marshaler type
-func (e *enhanceIndexingS3Exporter) marshalIndex(fieldIndex map[string][]string) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndex(fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		return json.Marshal(fieldIndex)
+		return json.Marshal(fIndex)
 	} else {
 		// For protobuf, we need to manually encode since index isn't an OTel signal
 		// We'll create a simple protobuf-compatible format
-		return e.marshalIndexAsProtobuf(fieldIndex)
+		return e.marshalIndexAsProtobuf(fIndex)
 	}
 }
 
 // marshalIndexAsProtobuf manually encodes the index as protobuf
-func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldIndex map[string][]string) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	// For now, we'll use a simple approach: encode as JSON first, then wrap in a protobuf-like structure
 	// In a production environment, you would define a proper .proto file and generate Go structs
-	jsonData, err := json.Marshal(fieldIndex)
+	jsonData, err := json.Marshal(fIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -257,14 +257,14 @@ func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldIndex map[string
 
 // uploadBatch uploads all index files for a completed minute batch
 func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *MinuteIndexBatch) {
-	for fieldName, fieldIndex := range batch.fieldIndexes {
-		if len(fieldIndex) == 0 {
+	for fName, fIndex := range batch.fieldIndexes {
+		if len(fIndex) == 0 {
 			continue
 		}
 
-		indexData, err := e.marshalIndex(fieldIndex)
+		indexData, err := e.marshalIndex(fIndex)
 		if err != nil {
-			e.logger.Error("failed to marshal index", zap.Error(err), zap.String("field", fieldName))
+			e.logger.Error("failed to marshal index", zap.Error(err), zap.String("field", string(fName)))
 			continue
 		}
 
@@ -276,16 +276,16 @@ func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *Minu
 			fileExt = "binpb" // binary protobuf
 		}
 
-		indexKey := fmt.Sprintf("%s/index_%s_%s.%s", batch.minute, fieldName, uuid.New().String(), fileExt)
+		indexKey := fmt.Sprintf("%s/index_%s_%s.%s", batch.minute, string(fName), uuid.New().String(), fileExt)
 		if e.config.S3Uploader.Compression == "gzip" {
 			indexKey += ".gz"
 		}
 
 		_, err = e.s3Writer.WriteBufferWithIndex(ctx, indexData, "index", indexKey)
 		if err != nil {
-			e.logger.Error("failed to upload index", zap.Error(err), zap.String("field", fieldName))
+			e.logger.Error("failed to upload index", zap.Error(err), zap.String("field", string(fName)))
 		} else {
-			e.logger.Info("uploaded index", zap.String("field", fieldName), zap.String("key", indexKey), zap.String("format", string(e.config.MarshalerName)))
+			e.logger.Info("uploaded index", zap.String("field", string(fName)), zap.String("key", indexKey), zap.String("format", string(e.config.MarshalerName)))
 		}
 	}
 }
