@@ -72,9 +72,9 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	// Start minute boundary timer if indexing is enabled
+	// Start index checking and uploading timer if indexing is enabled
 	if e.config.IndexConfig.Enabled {
-		e.startMinuteTimer(ctx)
+		e.startTimer(ctx)
 	}
 
 	return nil
@@ -108,8 +108,10 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 	return nil
 }
 
-// startMinuteTimer starts a timer that triggers every minute
-func (e *enhanceIndexingS3Exporter) startMinuteTimer(ctx context.Context) {
+// startTimer starts a timer that triggers every 30 seconds, which will check for
+// index batches that are ready to be uploaded and uploads them. It also initializes
+// an empty index batch for the current minute.
+func (e *enhanceIndexingS3Exporter) startTimer(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
 	e.logger.Info("Starting index batch timer")
 
