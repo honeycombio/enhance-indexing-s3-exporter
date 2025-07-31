@@ -33,16 +33,17 @@ func NewS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter
 	}
 }
 
-func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) (string, error) {
+func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) (string, int, error) {
 	return w.WriteBufferWithIndex(ctx, buf, signalType, "")
 }
 
-func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalType string, indexKey string) (string, error) {
+func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalType string, indexKey string) (string, int, error) {
 	var key string
+	var minute int
 	if indexKey != "" {
 		key = indexKey
 	} else {
-		key = w.generateKey(signalType)
+		key, minute = w.generateKey(signalType)
 	}
 
 	w.logger.Info("Starting S3 upload", zap.String("key", key), zap.String("signalType", signalType), zap.Int("bufferSize", len(buf)))
@@ -53,10 +54,10 @@ func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalT
 		var compressedBuf bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressedBuf)
 		if _, err := gzipWriter.Write(buf); err != nil {
-			return "", fmt.Errorf("failed to compress data: %w", err)
+			return "", 0, fmt.Errorf("failed to compress data: %w", err)
 		}
 		if err := gzipWriter.Close(); err != nil {
-			return "", fmt.Errorf("failed to close gzip writer: %w", err)
+			return "", 0, fmt.Errorf("failed to close gzip writer: %w", err)
 		}
 		reader = &compressedBuf
 	}
@@ -73,14 +74,14 @@ func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalT
 
 	_, err := w.uploader.Upload(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload to S3: %w", err)
+		return "", 0, fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	w.logger.Info("Successfully uploaded to S3", zap.String("key", key))
-	return key, nil
+	w.logger.Info("Successfully uploaded to S3", zap.String("key", key), zap.Int("minute", minute))
+	return key, minute, nil
 }
 
-func (w *S3Writer) generateKey(signalType string) string {
+func (w *S3Writer) generateKey(signalType string) (string, int) {
 	prefix := w.config.S3Prefix
 
 	now := time.Now().UTC()
@@ -108,5 +109,5 @@ func (w *S3Writer) generateKey(signalType string) string {
 		filename += ".gz"
 	}
 
-	return fmt.Sprintf("%s%s/%s", prefix, timePath, filename)
+	return fmt.Sprintf("%s%s/%s", prefix, timePath, filename), now.Minute()
 }
