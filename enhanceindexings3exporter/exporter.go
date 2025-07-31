@@ -145,15 +145,16 @@ func (e *enhanceIndexingS3Exporter) startTimer(ctx context.Context) {
 								break
 							}
 
-							e.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
+							e.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
 							delete(e.minuteIndexBatches, minute)
 						}
 					}
 
-					// Initialize an empty index batch for the current minute
-					e.minuteIndexBatches = map[int]*MinuteIndexBatch{}
-					e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-						fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+					// Initialize an empty index batch for the current minute if it doesn't exist
+					if _, ok := e.minuteIndexBatches[minute]; !ok {
+						e.minuteIndexBatches[minute] = &MinuteIndexBatch{
+							fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+						}
 					}
 				}
 			}
@@ -260,14 +261,12 @@ func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fIndex map[fieldValue
 
 // uploadBatch uploads all index files for a completed minute batch
 func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *MinuteIndexBatch) error {
-	e.logger.Info("Uploading index batch")
+	if len(batch.fieldIndexes) == 0 {
+		e.logger.Info("No index data to upload")
+		return nil
+	}
 
 	for fName, fIndex := range batch.fieldIndexes {
-		if len(fIndex) == 0 {
-			e.logger.Info("No index data to upload", zap.String("field", string(fName)))
-			continue
-		}
-
 		indexData, err := e.marshalIndex(fIndex)
 		if err != nil {
 			e.logger.Error("Failed to marshal index", zap.Error(err), zap.String("field", string(fName)))
