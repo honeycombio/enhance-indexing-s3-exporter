@@ -8,6 +8,7 @@ exporters:
   debug:
     verbosity: detailed
   enhance_indexing_s3_exporter:
+    marshaler: otlp_proto
     s3uploader:
       endpoint: 'http://minio:9000/'
       region: 'us-east-1'
@@ -24,6 +25,9 @@ exporters:
         queue_size: 500000
         sizer: items
     timeout: 30s
+    index:
+      enabled: true
+      indexed_fields: ['service.instance.id']
 
 service:
   telemetry:

@@ -15,6 +15,14 @@ type Config struct {
 	RetryConfig      configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
 	S3Uploader       awss3exporter.S3UploaderConfig  `mapstructure:"s3uploader"`
 	MarshalerName    awss3exporter.MarshalerType     `mapstructure:"marshaler"`
+
+	// Index configuration
+	IndexConfig IndexConfig `mapstructure:"index"`
+}
+
+type IndexConfig struct {
+	Enabled       bool        `mapstructure:"enabled"`
+	IndexedFields []fieldName `mapstructure:"indexed_fields"`
 }
 
 func (c *Config) Validate() error {
@@ -54,5 +62,9 @@ func createDefaultConfig() component.Config {
 			RetryMode:         "standard",
 		},
 		MarshalerName: awss3exporter.OtlpProtobuf,
+		IndexConfig: IndexConfig{
+			Enabled:       false,
+			IndexedFields: []fieldName{},
+		},
 	}
 }

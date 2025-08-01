@@ -18,21 +18,33 @@ import (
 )
 
 type S3Writer struct {
-	config   *awss3exporter.S3UploaderConfig
-	uploader *manager.Uploader
-	logger   *zap.Logger
+	config    *awss3exporter.S3UploaderConfig
+	marshaler awss3exporter.MarshalerType
+	uploader  *manager.Uploader
+	logger    *zap.Logger
 }
 
-func NewS3Writer(config *awss3exporter.S3UploaderConfig, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
+func NewS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter.MarshalerType, s3Client *s3.Client, logger *zap.Logger) *S3Writer {
 	return &S3Writer{
-		config:   config,
-		uploader: manager.NewUploader(s3Client),
-		logger:   logger,
+		config:    config,
+		marshaler: marshaler,
+		uploader:  manager.NewUploader(s3Client),
+		logger:    logger,
 	}
 }
 
-func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) error {
-	key := w.generateKey(signalType)
+func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType string) (string, int, error) {
+	return w.WriteBufferWithIndex(ctx, buf, signalType, "")
+}
+
+func (w *S3Writer) WriteBufferWithIndex(ctx context.Context, buf []byte, signalType string, indexKey string) (string, int, error) {
+	var key string
+	var minute int
+	if indexKey != "" {
+		key = indexKey
+	} else {
+		key, minute = w.generateKey(signalType)
+	}
 
 	w.logger.Info("Starting S3 upload", zap.String("key", key), zap.String("signalType", signalType), zap.Int("bufferSize", len(buf)))
 
@@ -42,10 +54,10 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 		var compressedBuf bytes.Buffer
 		gzipWriter := gzip.NewWriter(&compressedBuf)
 		if _, err := gzipWriter.Write(buf); err != nil {
-			return fmt.Errorf("failed to compress data: %w", err)
+			return "", 0, fmt.Errorf("failed to compress data: %w", err)
 		}
 		if err := gzipWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close gzip writer: %w", err)
+			return "", 0, fmt.Errorf("failed to close gzip writer: %w", err)
 		}
 		reader = &compressedBuf
 	}
@@ -62,19 +74,20 @@ func (w *S3Writer) WriteBuffer(ctx context.Context, buf []byte, signalType strin
 
 	_, err := w.uploader.Upload(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
+		return "", 0, fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	w.logger.Info("Successfully uploaded to S3", zap.String("key", key))
-	return nil
+	w.logger.Info("Successfully uploaded to S3", zap.String("key", key), zap.Int("minute", minute))
+	return key, minute, nil
 }
 
-func (w *S3Writer) generateKey(signalType string) string {
-	now := time.Now()
+func (w *S3Writer) generateKey(signalType string) (string, int) {
+	prefix := w.config.S3Prefix
+
+	now := time.Now().UTC()
 
 	timePath := timefmt.Format(now, w.config.S3PartitionFormat)
 
-	prefix := w.config.S3Prefix
 	if prefix != "" && prefix[len(prefix)-1] != '/' {
 		prefix += "/"
 	}
@@ -84,11 +97,17 @@ func (w *S3Writer) generateKey(signalType string) string {
 		filePrefix = signalType
 	}
 
-	// TODO: Add a suffix to the filename based on the exporter config's marshaler
-	filename := fmt.Sprintf("%s-%s.binp", filePrefix, uuid.New().String())
+	var marshalerName string
+	if w.marshaler == awss3exporter.OtlpJSON {
+		marshalerName = "json"
+	} else {
+		marshalerName = "binp"
+	}
+
+	filename := fmt.Sprintf("%s_%s.%s", filePrefix, uuid.New().String(), marshalerName)
 	if w.config.Compression == "gzip" {
 		filename += ".gz"
 	}
 
-	return fmt.Sprintf("%s%s/%s", prefix, timePath, filename)
+	return fmt.Sprintf("%s%s/%s", prefix, timePath, filename), now.Minute()
 }
