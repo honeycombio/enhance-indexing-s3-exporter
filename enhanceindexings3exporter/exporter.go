@@ -19,6 +19,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
+
+	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
 type fieldName string
@@ -226,37 +228,34 @@ func (e *enhanceIndexingS3Exporter) addToIndex(traces ptrace.Traces, s3Key strin
 }
 
 // marshalIndex marshals the index using the configured marshaler type
-func (e *enhanceIndexingS3Exporter) marshalIndex(fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndex(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		return json.Marshal(fIndex)
+		return json.Marshal(fieldIndex)
 	} else {
-		// For protobuf, we need to manually encode since index isn't an OTel signal
-		// We'll create a simple protobuf-compatible format
-		return e.marshalIndexAsProtobuf(fIndex)
+		// For protobuf, we use the generated protobuf methods
+		return e.marshalIndexAsProtobuf(fieldName, fieldIndex)
 	}
 }
 
-// marshalIndexAsProtobuf manually encodes the index as protobuf
-func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
-	// For now, we'll use a simple approach: encode as JSON first, then wrap in a protobuf-like structure
-	// In a production environment, you would define a proper .proto file and generate Go structs
-	jsonData, err := json.Marshal(fIndex)
-	if err != nil {
-		return nil, err
+// marshalIndexAsProtobuf encodes the index using generated protobuf methods
+func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+	// Create the protobuf FieldIndex structure
+	fieldIndexProto := &index.FieldIndex{
+		FieldName:  fieldName,
+		FieldIndex: make(map[string]*index.S3Keys),
 	}
 
-	// Simple protobuf-like encoding: length-prefixed JSON data
-	// This is a simplified approach - in production you'd use proper protobuf definitions
-	result := make([]byte, 4+len(jsonData))
-	// Write length as 4-byte big-endian integer
-	result[0] = byte(len(jsonData) >> 24)
-	result[1] = byte(len(jsonData) >> 16)
-	result[2] = byte(len(jsonData) >> 8)
-	result[3] = byte(len(jsonData))
-	// Write JSON data
-	copy(result[4:], jsonData)
+	// Convert the map data to protobuf structures
+	for fieldVal, s3Keys := range fieldIndex {
+		s3KeysList := &index.S3Keys{
+			S3Keys: make([]string, len(s3Keys)),
+		}
+		copy(s3KeysList.S3Keys, s3Keys)
+		fieldIndexProto.FieldIndex[string(fieldVal)] = s3KeysList
+	}
 
-	return result, nil
+	// Use the generated Marshal method
+	return fieldIndexProto.Marshal()
 }
 
 // uploadBatch uploads all index files for a completed minute batch
@@ -267,7 +266,7 @@ func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *Minu
 	}
 
 	for fName, fIndex := range batch.fieldIndexes {
-		indexData, err := e.marshalIndex(fIndex)
+		indexData, err := e.marshalIndex(string(fName), fIndex)
 		if err != nil {
 			e.logger.Error("Failed to marshal index", zap.Error(err), zap.String("field", string(fName)))
 			return err

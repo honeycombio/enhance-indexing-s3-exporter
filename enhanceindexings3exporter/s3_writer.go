@@ -101,7 +101,7 @@ func (w *S3Writer) generateKey(signalType string) (string, int) {
 	if w.marshaler == awss3exporter.OtlpJSON {
 		marshalerName = "json"
 	} else {
-		marshalerName = "binp"
+		marshalerName = "binpb"
 	}
 
 	filename := fmt.Sprintf("%s_%s.%s", filePrefix, uuid.New().String(), marshalerName)
