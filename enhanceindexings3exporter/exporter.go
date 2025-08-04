@@ -228,34 +228,34 @@ func (e *enhanceIndexingS3Exporter) addToIndex(traces ptrace.Traces, s3Key strin
 }
 
 // marshalIndex marshals the index using the configured marshaler type
-func (e *enhanceIndexingS3Exporter) marshalIndex(fieldName string, fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndex(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		return json.Marshal(fIndex)
+		return json.Marshal(fieldIndex)
 	} else {
 		// For protobuf, we use the generated protobuf methods
-		return e.marshalIndexAsProtobuf(fieldName, fIndex)
+		return e.marshalIndexAsProtobuf(fieldName, fieldIndex)
 	}
 }
 
 // marshalIndexAsProtobuf encodes the index using generated protobuf methods
-func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldName string, fIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	// Create the protobuf FieldIndex structure
-	fieldIndex := &index.FieldIndex{
+	fieldIndexProto := &index.FieldIndex{
 		FieldName:  fieldName,
 		FieldIndex: make(map[string]*index.S3Keys),
 	}
 
 	// Convert the map data to protobuf structures
-	for fieldVal, s3Keys := range fIndex {
+	for fieldVal, s3Keys := range fieldIndex {
 		s3KeysList := &index.S3Keys{
 			S3Keys: make([]string, len(s3Keys)),
 		}
 		copy(s3KeysList.S3Keys, s3Keys)
-		fieldIndex.FieldIndex[string(fieldVal)] = s3KeysList
+		fieldIndexProto.FieldIndex[string(fieldVal)] = s3KeysList
 	}
 
 	// Use the generated Marshal method
-	return fieldIndex.Marshal()
+	return fieldIndexProto.Marshal()
 }
 
 // uploadBatch uploads all index files for a completed minute batch

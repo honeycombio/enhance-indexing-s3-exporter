@@ -52,11 +52,19 @@ func main() {
 	fmt.Printf("  Field Name: %s\n", fieldIndex.FieldName)
 	fmt.Printf("  Unique Values: %d\n", len(fieldIndex.FieldIndex))
 
-	totalFiles := 0
+	// Count the number of unique S3 keys found in the index
+	uniqueS3Keys := make([]string, 0, len(fieldIndex.FieldIndex))
+	seen := make(map[string]bool, len(fieldIndex.FieldIndex))
 	for _, s3Keys := range fieldIndex.FieldIndex {
-		totalFiles += len(s3Keys.S3Keys)
+		for _, s3Key := range s3Keys.S3Keys {
+			if !seen[s3Key] {
+				seen[s3Key] = true
+				uniqueS3Keys = append(uniqueS3Keys, s3Key)
+			}
+		}
 	}
-	fmt.Printf("  Total S3 Files: %d\n", totalFiles)
+
+	fmt.Printf("  Number of unique S3 Files: %d\n", len(uniqueS3Keys))
 }
 
 // readFile reads a file, handling gzip decompression if needed

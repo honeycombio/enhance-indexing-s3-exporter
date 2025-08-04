@@ -11,7 +11,6 @@ COPY go.work go.work.sum* ./
 COPY enhanceindexings3exporter ./enhanceindexings3exporter
 COPY cmd/otelcol ./cmd/otelcol
 COPY index ./index
-COPY tools ./tools
 WORKDIR /app/cmd/otelcol
 RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache \
   go mod download
