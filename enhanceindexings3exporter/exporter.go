@@ -37,7 +37,7 @@ type enhanceIndexingS3Exporter struct {
 	config             *Config
 	logger             *zap.Logger
 	s3Writer           *S3Writer
-	timer              *time.Timer
+	ticker             *time.Ticker
 	indexMutex         sync.RWMutex
 	minuteIndexBatches map[int]*MinuteIndexBatch
 }
@@ -76,6 +76,13 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	// Start index checking and uploading timer if indexing is enabled
 	if e.config.IndexConfig.Enabled {
+		// Initialize an empty index batch for the current minute
+		minute := time.Now().UTC().Minute()
+		e.minuteIndexBatches = map[int]*MinuteIndexBatch{}
+		e.minuteIndexBatches[minute] = &MinuteIndexBatch{
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+		}
+
 		e.startTimer(ctx)
 	}
 
@@ -83,10 +90,12 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
-	// Stop the minute timer and upload any pending indexes
-	if e.timer != nil {
-		e.timer.Stop()
+	// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
+	if e.ticker != nil {
+		e.ticker.Stop()
 	}
+
+	// TODO figure out if we need to wait for the upload to finish before continuing
 
 	// Upload any remaining batch data
 	e.indexMutex.Lock()
@@ -114,54 +123,48 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 // index batches that are ready to be uploaded and uploads them. It also initializes
 // an empty index batch for the current minute.
 func (e *enhanceIndexingS3Exporter) startTimer(ctx context.Context) {
-	minute := time.Now().UTC().Minute()
 	e.logger.Info("Starting index batch timer")
 
-	// Initialize an empty index batch for the current minute
-	e.minuteIndexBatches = map[int]*MinuteIndexBatch{}
-	e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-		fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+	// Set up a recurring timer for every 30 seconds - the ticker is stopped in the shutdown function
+	e.ticker = time.NewTicker(30 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.ticker.C:
+				// blocking so we don't have multiple rollovers running simultaneously
+				e.rolloverIndexes(ctx)
+			}
+		}
+	}()
+}
+
+func (e *enhanceIndexingS3Exporter) rolloverIndexes(ctx context.Context) {
+	minute := time.Now().UTC().Minute()
+	e.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
+
+	// Check if there are any index batches that are ready to be uploaded
+	for minute, indexBatch := range e.minuteIndexBatches {
+		if e.readyToUpload(minute) {
+			e.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
+			err := e.uploadBatch(ctx, indexBatch)
+			if err != nil {
+				e.logger.Error("Failed to upload index batch", zap.Error(err))
+				break
+			}
+
+			e.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
+			delete(e.minuteIndexBatches, minute)
+		}
 	}
 
-	// Wait for 1 second before starting the timer
-	e.timer = time.AfterFunc(time.Second, func() {
-		// Set up a recurring timer for every 30 seconds
-		ticker := time.NewTicker(30 * time.Second)
-		go func() {
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					minute := time.Now().UTC().Minute()
-					e.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
-
-					// Check if there are any index batches that are ready to be uploaded
-					for minute, indexBatch := range e.minuteIndexBatches {
-						if e.readyToUpload(minute) {
-							e.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
-							err := e.uploadBatch(ctx, indexBatch)
-							if err != nil {
-								e.logger.Error("Failed to upload index batch", zap.Error(err))
-								break
-							}
-
-							e.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
-							delete(e.minuteIndexBatches, minute)
-						}
-					}
-
-					// Initialize an empty index batch for the current minute if it doesn't exist
-					if _, ok := e.minuteIndexBatches[minute]; !ok {
-						e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-							fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
-						}
-					}
-				}
-			}
-		}()
-	})
+	// Initialize an empty index batch for the current minute if it doesn't exist
+	if _, ok := e.minuteIndexBatches[minute]; !ok {
+		e.minuteIndexBatches[minute] = &MinuteIndexBatch{
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+		}
+	}
 }
 
 // readyToUpload checks if the minute batch is ready to be uploaded
