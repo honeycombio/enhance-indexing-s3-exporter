@@ -4,6 +4,9 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
+processors:
+  sessionid: {}
+
 exporters:
   debug:
     verbosity: detailed
@@ -40,4 +43,5 @@ service:
 
     traces/objectstorage:
       receivers: [otlp]
+      processors: [sessionid]
       exporters: [enhance_indexing_s3_exporter, debug]
