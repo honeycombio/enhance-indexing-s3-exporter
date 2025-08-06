@@ -43,6 +43,12 @@ type enhanceIndexingS3Exporter struct {
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger) (*enhanceIndexingS3Exporter, error) {
+	if cfg.IndexConfig.Enabled {
+		if !slices.Contains(cfg.IndexConfig.IndexedFields, fieldName("session.id")) {
+			cfg.IndexConfig.IndexedFields = append(cfg.IndexConfig.IndexedFields, fieldName("session.id"))
+		}
+	}
+
 	return &enhanceIndexingS3Exporter{
 		config: cfg,
 		logger: logger,
