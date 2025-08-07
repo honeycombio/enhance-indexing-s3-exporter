@@ -26,7 +26,7 @@ func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		processor.WithTraces(createExampleProcessor, component.StabilityLevelAlpha),
+		processor.WithTraces(createSessionIdProcessor, component.StabilityLevelAlpha),
 	)
 }
 
@@ -35,15 +35,15 @@ func createDefaultConfig() component.Config {
 	return &config{}
 }
 
-// createExampleProcessor initializes an instance of the example processor.
-func createExampleProcessor(ctx context.Context, set processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
-	// Convert baseCfg to the correct type.
+// createSessionIdProcessor initializes an instance of the sessionid processor.
+func createSessionIdProcessor(ctx context.Context, set processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
 	config := cfg.(*config)
 
-	// Create a new processor instance.
-	p := newSessionIdProcessor(config, set.Logger)
+	p := &sessionIdProcessor{
+		config: *config,
+		logger: set.Logger,
+	}
 
-	// Wrap the processor with the helper utilities.
 	return processorhelper.NewTraces(
 		ctx,
 		set,
@@ -52,14 +52,6 @@ func createExampleProcessor(ctx context.Context, set processor.Settings, cfg com
 		p.consumeTraces,
 		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: true}),
 	)
-}
-
-// newSessionIdProcessor constructs a new instance of the example processor.
-func newSessionIdProcessor(cfg *config, logger *zap.Logger) *sessionIdProcessor {
-	return &sessionIdProcessor{
-		config: *cfg,
-		logger: logger,
-	}
 }
 
 // consumeTraces modify traces adding session.id to each span.
