@@ -17,10 +17,14 @@ import (
 	"go.uber.org/zap"
 )
 
+type S3Uploader interface {
+	Upload(ctx context.Context, input *s3.PutObjectInput, opts ...func(*manager.Uploader)) (*manager.UploadOutput, error)
+}
+
 type S3Writer struct {
 	config    *awss3exporter.S3UploaderConfig
 	marshaler awss3exporter.MarshalerType
-	uploader  *manager.Uploader
+	uploader  S3Uploader
 	logger    *zap.Logger
 }
 
