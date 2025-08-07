@@ -23,7 +23,11 @@ func NewFactory() processor.Factory {
 	return processor.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		processor.WithTraces(createSessionIdProcessor, component.StabilityLevelAlpha),
+		processor.WithTraces(
+			createSessionIdProcessor,
+			// In the future we may want to change this to be Beta or even Stable.
+			component.StabilityLevelAlpha,
+		),
 	)
 }
 
