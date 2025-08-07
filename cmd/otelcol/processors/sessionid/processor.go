@@ -14,10 +14,7 @@ import (
 
 var typeStr = component.MustNewType("sessionid")
 
-type config struct{}
-
 type sessionIdProcessor struct {
-	config config
 	logger *zap.Logger
 }
 
@@ -32,22 +29,19 @@ func NewFactory() processor.Factory {
 
 // createDefaultConfig returns the default configuration for the processor.
 func createDefaultConfig() component.Config {
-	return &config{}
+	return &struct{}{}
 }
 
 // createSessionIdProcessor initializes an instance of the sessionid processor.
 func createSessionIdProcessor(ctx context.Context, set processor.Settings, cfg component.Config, next consumer.Traces) (processor.Traces, error) {
-	config := cfg.(*config)
-
 	p := &sessionIdProcessor{
-		config: *config,
 		logger: set.Logger,
 	}
 
 	return processorhelper.NewTraces(
 		ctx,
 		set,
-		config,
+		cfg,
 		next,
 		p.consumeTraces,
 		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: true}),
