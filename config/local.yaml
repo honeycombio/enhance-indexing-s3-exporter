@@ -9,7 +9,7 @@ processors:
 
 exporters:
   debug:
-    verbosity: detailed
+    #verbosity: detailed
   enhance_indexing_s3_exporter:
     marshaler: otlp_proto
     s3uploader:

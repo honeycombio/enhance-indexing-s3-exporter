@@ -7,7 +7,7 @@ replace github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exp
 replace github.com/honeycombio/enhance-indexing-s3-exporter/index => ../../index
 
 require (
-	github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter v0.0.0-00010101000000-000000000000
+	github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter v0.0.1
 	go.opentelemetry.io/collector/component v1.37.0
 	go.opentelemetry.io/collector/confmap v1.37.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.37.0
@@ -63,7 +63,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
-	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.0-00010101000000-000000000000 // indirect
+	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
