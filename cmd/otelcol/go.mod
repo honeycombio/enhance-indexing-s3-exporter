@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter v0.0.1
+	github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter v0.0.2-alpha
 	go.opentelemetry.io/collector/component v1.38.0
 	go.opentelemetry.io/collector/confmap v1.38.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.38.0
@@ -64,7 +64,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
-	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.1 // indirect
+	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.2-alpha // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

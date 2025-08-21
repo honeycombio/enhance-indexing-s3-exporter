@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.18.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.85.0
 	github.com/google/uuid v1.6.0
-	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.1
+	github.com/honeycombio/enhance-indexing-s3-exporter/index v0.0.2-alpha
 	github.com/itchyny/timefmt-go v0.1.6
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter v0.132.0
 	github.com/stretchr/testify v1.10.0
