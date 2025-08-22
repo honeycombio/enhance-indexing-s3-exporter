@@ -7,7 +7,7 @@ ENV GOSUMDB=off
 RUN go env -w GOCACHE=/go-cache
 RUN go env -w GOMODCACHE=/gomod-cache
 WORKDIR /app
-COPY go.work go.work.sum* ./
+COPY go.work ./
 COPY enhanceindexings3exporter ./enhanceindexings3exporter
 COPY cmd/otelcol ./cmd/otelcol
 COPY index ./index
