@@ -1,0 +1,416 @@
+package enhanceindexings3exporter
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.uber.org/zap"
+)
+
+// Mock S3Uploader for testing S3Writer
+type mockS3Uploader struct {
+	uploadCalls []struct {
+		input *s3.PutObjectInput
+		opts  []func(*manager.Uploader)
+	}
+	uploadError  error
+	uploadOutput *manager.UploadOutput
+}
+
+func (m *mockS3Uploader) Upload(ctx context.Context, input *s3.PutObjectInput, opts ...func(*manager.Uploader)) (*manager.UploadOutput, error) {
+	m.uploadCalls = append(m.uploadCalls, struct {
+		input *s3.PutObjectInput
+		opts  []func(*manager.Uploader)
+	}{input, opts})
+
+	if m.uploadError != nil {
+		return nil, m.uploadError
+	}
+
+	if m.uploadOutput != nil {
+		return m.uploadOutput, nil
+	}
+
+	return &manager.UploadOutput{}, nil
+}
+
+func TestConsumeTraces(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         *Config
+		traces         ptrace.Traces
+		expectIndexing bool
+	}{
+		{
+			name: "traces with indexing disabled",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:   "us-east-1",
+					S3Bucket: "test-bucket",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Enabled: false,
+				},
+			},
+			traces:         createTestTraces(),
+			expectIndexing: false,
+		},
+		{
+			name: "traces with indexing enabled",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:   "us-east-1",
+					S3Bucket: "test-bucket",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Enabled:       true,
+					IndexedFields: []fieldName{"user.id"},
+				},
+			},
+			traces:         createTestTraces(),
+			expectIndexing: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := zap.NewNop()
+			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger)
+			require.NoError(t, err)
+
+			// Mock the s3Writer
+			mockWriter := createMockS3Writer(&tt.config.S3Uploader, tt.config.MarshalerName, logger)
+			exporter.s3Writer = mockWriter
+			mockUploader := mockWriter.uploader.(*mockS3Uploader)
+			// Initialize index batches if indexing is enabled
+			if tt.config.IndexConfig.Enabled {
+				// Get the current minute to match what WriteBuffer will return
+				currentMinute := time.Now().UTC().Minute()
+				exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+					currentMinute: {
+						fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+					},
+				}
+			}
+
+			ctx := context.Background()
+			err = exporter.consumeTraces(ctx, tt.traces)
+
+			require.NoError(t, err)
+
+			assert.Len(t, mockUploader.uploadCalls, 1)
+			assert.Contains(t, *mockUploader.uploadCalls[0].input.Key, "traces_")
+
+			if tt.expectIndexing {
+				// Check that index was updated
+				currentMinute := time.Now().UTC().Minute()
+				batch := exporter.minuteIndexBatches[currentMinute]
+				assert.NotNil(t, batch)
+
+				// Check that trace_id and session.id are indexed automatically
+				assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
+				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+
+				// Check that configured fields are indexed
+				assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
+
+				// Check that non-configured fields are not indexed
+				assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
+			}
+			// Clean up after checking
+			err = exporter.shutdown(ctx)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestConsumeLogs(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Region:   "us-east-1",
+			S3Bucket: "test-bucket",
+		},
+		MarshalerName: awss3exporter.OtlpProtobuf,
+		IndexConfig: IndexConfig{
+			Enabled: false,
+		},
+	}
+
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	require.NoError(t, err)
+
+	// Mock the s3Writer
+	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
+	exporter.s3Writer = mockWriter
+	mockUploader := mockWriter.uploader.(*mockS3Uploader)
+	logs := createTestLogs()
+	ctx := context.Background()
+
+	err = exporter.consumeLogs(ctx, logs)
+
+	require.NoError(t, err)
+	assert.Len(t, mockUploader.uploadCalls, 1)
+	assert.Contains(t, *mockUploader.uploadCalls[0].input.Key, "logs_")
+
+	// Clean up after checking
+	err = exporter.shutdown(ctx)
+	require.NoError(t, err)
+}
+
+func TestAddToIndex(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{
+		IndexConfig: IndexConfig{
+			Enabled:       true,
+			IndexedFields: []fieldName{"user.id"},
+		},
+	}
+
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	require.NoError(t, err)
+
+	// Initialize index batch
+	exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+		30: {
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+		},
+	}
+
+	traces := createTestTraces()
+	s3Key := "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30/traces_uuid.binpb.gz"
+	minute := 30
+
+	exporter.addToIndex(traces, s3Key, minute)
+
+	// Verify index was updated correctly
+	batch := exporter.minuteIndexBatches[minute]
+	assert.Equal(t, "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30", batch.minuteDir)
+
+	// Check trace_id indexing
+	traceID := "00000000000000000000000000000001"
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue(traceID))
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")][fieldValue(traceID)], s3Key)
+
+	// Check session.id indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
+
+	// Check configured field indexing
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
+
+	// Check that non-configured fields are not indexed
+	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
+
+}
+
+func TestMarshalIndex(t *testing.T) {
+	tests := []struct {
+		name          string
+		marshalerName awss3exporter.MarshalerType
+		fieldName     string
+		fieldIndex    map[fieldValue]fieldS3Keys
+		expectError   bool
+	}{
+		{
+			name:          "JSON marshaler",
+			marshalerName: awss3exporter.OtlpJSON,
+			fieldName:     "user.id",
+			fieldIndex: map[fieldValue]fieldS3Keys{
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
+			},
+			expectError: false,
+		},
+		{
+			name:          "Protobuf marshaler",
+			marshalerName: awss3exporter.OtlpProtobuf,
+			fieldName:     "user.id",
+			fieldIndex: map[fieldValue]fieldS3Keys{
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := zap.NewNop()
+			config := &Config{
+				MarshalerName: tt.marshalerName,
+			}
+
+			exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+			require.NoError(t, err)
+
+			data, err := exporter.marshalIndex(tt.fieldName, tt.fieldIndex)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.NotEmpty(t, data)
+
+			// Validate with unmarshalling
+			switch tt.marshalerName {
+			case awss3exporter.OtlpJSON:
+				var unmarshaled map[string]interface{}
+				err = json.Unmarshal(data, &unmarshaled)
+				assert.NoError(t, err)
+			case awss3exporter.OtlpProtobuf:
+				fieldIndex := &index.FieldIndex{}
+				err = fieldIndex.Unmarshal(data)
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUploadBatch(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{
+		MarshalerName: awss3exporter.OtlpJSON,
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Compression: "gzip",
+		},
+	}
+
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	require.NoError(t, err)
+
+	// Mock the s3Writer
+	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
+	exporter.s3Writer = mockWriter
+	mockUploader := mockWriter.uploader.(*mockS3Uploader)
+	// Create test batch
+	batch := &MinuteIndexBatch{
+		minuteDir: "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30",
+		fieldIndexes: map[fieldName]map[fieldValue]fieldS3Keys{
+			"user.id": {
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
+			},
+			"request.id": {
+				"req789": {"key4"},
+			},
+			"session.id": {
+				"12345": {"key5"},
+			},
+			"trace_id": {
+				"00000000000000000000000000000001": {"key6"},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	err = exporter.uploadBatch(ctx, batch)
+
+	require.NoError(t, err)
+
+	assert.Len(t, mockUploader.uploadCalls, 4) // user.id, request.id, session.id, trace_id
+
+	for _, call := range mockUploader.uploadCalls {
+		assert.NotNil(t, call.input)
+		assert.Contains(t, *call.input.Key, "index_")
+	}
+}
+
+func TestRolloverIndexes(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{
+		IndexConfig: IndexConfig{
+			Enabled:       true,
+			IndexedFields: []fieldName{"user.id"},
+		},
+	}
+
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	require.NoError(t, err)
+
+	// Mock the s3Writer
+	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
+	exporter.s3Writer = mockWriter
+	mockUploader := mockWriter.uploader.(*mockS3Uploader)
+
+	// Initialize with old minute batch
+	oldMinute := (time.Now().UTC().Minute() + 1) % 60
+	exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+		oldMinute: {
+			fieldIndexes: map[fieldName]map[fieldValue]fieldS3Keys{
+				"user.id": {
+					"user123": {"key1"},
+				},
+			},
+		},
+	}
+
+	// Call rollover
+	ctx := context.Background()
+	exporter.rolloverIndexes(ctx)
+
+	// Verify that old batch was uploaded and removed
+	assert.Len(t, mockUploader.uploadCalls, 1)
+	assert.Empty(t, exporter.minuteIndexBatches[oldMinute])
+
+	// Verify new batch was created for current minute
+	currentMinute := time.Now().UTC().Minute()
+	assert.NotNil(t, exporter.minuteIndexBatches[currentMinute])
+}
+
+func createMockS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter.MarshalerType, logger *zap.Logger) *S3Writer {
+	return &S3Writer{
+		config:    config,
+		marshaler: marshaler,
+		uploader:  &mockS3Uploader{},
+		logger:    logger,
+	}
+}
+
+// Helper functions to create test data
+func createTestTraces() ptrace.Traces {
+	traces := ptrace.NewTraces()
+	rs := traces.ResourceSpans().AppendEmpty()
+	ss := rs.ScopeSpans().AppendEmpty()
+	span := ss.Spans().AppendEmpty()
+
+	traceID := pcommon.TraceID([16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1})
+	span.SetTraceID(traceID)
+
+	span.Attributes().PutStr("user.id", "user123")
+	span.Attributes().PutStr("request.id", "req456")
+	span.Attributes().PutInt("session.id", 12345)
+
+	return traces
+}
+
+func createTestLogs() plog.Logs {
+	logs := plog.NewLogs()
+	rl := logs.ResourceLogs().AppendEmpty()
+	sl := rl.ScopeLogs().AppendEmpty()
+	lr := sl.LogRecords().AppendEmpty()
+
+	lr.Body().SetStr("test log message")
+
+	lr.Attributes().PutStr("level", "info")
+	lr.Attributes().PutStr("service", "test-service")
+
+	return logs
+}

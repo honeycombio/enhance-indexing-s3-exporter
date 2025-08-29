@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -79,4 +80,177 @@ func TestConfigMerging(t *testing.T) {
 		assert.NotNil(t, exp.config)
 		assert.Contains(t, exp.config.IndexConfig.IndexedFields, fieldName("session.id"))
 	})
+}
+
+func TestConfigValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *Config
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid config with all fields",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+					Compression:       "gzip",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Enabled:       true,
+					IndexedFields: []fieldName{"user.id", "service.name"},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "valid config with custom endpoint and no bucket",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					Endpoint:          "http://localhost:9000",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpJSON,
+				IndexConfig: IndexConfig{
+					Enabled: false,
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "missing s3_bucket and endpoint",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "s3_bucket is required unless a custom endpoint is provided",
+		},
+		{
+			name: "invalid compression",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+					Compression:       "invalid",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "compression must be 'gzip' or 'none'",
+		},
+		{
+			name: "invalid retry mode",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+					RetryMode:         "invalid",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "retry_mode must be 'standard' or 'adaptive'",
+		},
+		{
+			name: "invalid marshaler",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: "invalid",
+			},
+			expectError: true,
+			errorMsg:    "marshaler must be 'otlp_json' or 'otlp_protobuf'",
+		},
+		{
+			name: "empty s3_partition_format",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat cannot be empty",
+		},
+		{
+			name: "valid s3_partition_format with Go time format",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=2006/month=01/day=02/hour=15/minute=04",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid s3_partition_format missing placehoders",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat must contain placeholders of year, month, day, hour and minute",
+		},
+		{
+			name: "invalide s3_partition_format start with /",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "/year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat cannot start with '/'",
+		},
+		{
+			name: "invalid s3_partition_format end with /",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M/",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat cannot end with '/'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
