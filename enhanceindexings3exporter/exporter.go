@@ -36,7 +36,7 @@ type MinuteIndexBatch struct {
 type enhanceIndexingS3Exporter struct {
 	config             *Config
 	logger             *zap.Logger
-	s3Writer           *S3Writer
+	s3Writer           S3WriterInterface
 	ticker             *time.Ticker
 	indexMutex         sync.RWMutex
 	minuteIndexBatches map[int]*MinuteIndexBatch

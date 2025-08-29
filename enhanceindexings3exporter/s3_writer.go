@@ -21,6 +21,11 @@ type S3Uploader interface {
 	Upload(ctx context.Context, input *s3.PutObjectInput, opts ...func(*manager.Uploader)) (*manager.UploadOutput, error)
 }
 
+type S3WriterInterface interface {
+	WriteBuffer(ctx context.Context, buf []byte, signalType string) (string, int, error)
+	WriteBufferWithIndex(ctx context.Context, buf []byte, signalType string, indexKey string) (string, int, error)
+}
+
 type S3Writer struct {
 	config    *awss3exporter.S3UploaderConfig
 	marshaler awss3exporter.MarshalerType

@@ -2,6 +2,7 @@ package enhanceindexings3exporter
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
@@ -45,6 +46,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("marshaler must be 'otlp_json' or 'otlp_protobuf', got: %s", c.MarshalerName)
 	}
 
+	if err := validateS3PartitionFormat(c.S3Uploader.S3PartitionFormat); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -67,4 +72,42 @@ func createDefaultConfig() component.Config {
 			IndexedFields: []fieldName{},
 		},
 	}
+}
+
+func validateS3PartitionFormat(format string) error {
+	if format == "" {
+		return fmt.Errorf("S3PartitionFormat cannot be empty")
+	}
+
+	goTimePlaceholders := []string{"2006", "01", "02", "15", "04"}
+	unixTimePlaceholders := []string{"%Y", "%m", "%d", "%H", "%M"}
+
+	hasGoTimePlaceholders := true
+
+	for _, placeholder := range goTimePlaceholders {
+		if !strings.Contains(format, placeholder) {
+			hasGoTimePlaceholders = false
+			break
+		}
+	}
+
+	hasUnixTimePlaceholders := true
+	for _, placeholder := range unixTimePlaceholders {
+		if !strings.Contains(format, placeholder) {
+			hasUnixTimePlaceholders = false
+			break
+		}
+	}
+
+	if !hasGoTimePlaceholders && !hasUnixTimePlaceholders {
+		return fmt.Errorf("S3PartitionFormat must contain placeholders of year, month, day, hour and minute (e.g., 2006, 01, 02, 15, 04 or %%Y, %%m, %%d, %%H, %%M)")
+	}
+
+	if strings.HasPrefix(format, "/") {
+		return fmt.Errorf("S3PartitionFormat cannot start with '/'")
+	}
+	if strings.HasSuffix(format, "/") {
+		return fmt.Errorf("S3PartitionFormat cannot end with '/'")
+	}
+	return nil
 }
