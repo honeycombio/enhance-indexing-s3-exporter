@@ -225,6 +225,19 @@ func TestConfigValidation(t *testing.T) {
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot start with '/'",
 		},
+		{
+			name: "invalid s3_partition_format end with /",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M/",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat cannot end with '/'",
+		},
 	}
 
 	for _, tt := range tests {

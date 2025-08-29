@@ -177,7 +177,7 @@ func TestAddToIndex(t *testing.T) {
 	config := &Config{
 		IndexConfig: IndexConfig{
 			Enabled:       true,
-			IndexedFields: []fieldName{"user.id", "request.id"},
+			IndexedFields: []fieldName{"user.id"},
 		},
 	}
 
@@ -206,16 +206,17 @@ func TestAddToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue(traceID))
 	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")][fieldValue(traceID)], s3Key)
 
+	// Check session.id indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
+
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
 
-	assert.Contains(t, batch.fieldIndexes[fieldName("request.id")], fieldValue("req456"))
-	assert.Contains(t, batch.fieldIndexes[fieldName("request.id")][fieldValue("req456")], s3Key)
+	// Check that non-configured fields are not indexed
+	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 
-	// Check session.id indexing (automatically included when indexing is enabled)
-	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
-	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
 }
 
 func TestMarshalIndex(t *testing.T) {
