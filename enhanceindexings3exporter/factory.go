@@ -2,6 +2,7 @@ package enhanceindexings3exporter
 
 import (
 	"context"
+	"sync"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
@@ -14,7 +15,25 @@ const (
 	stability = component.StabilityLevelAlpha
 )
 
-var componentType = component.MustNewType(typeStr)
+var (
+	componentType = component.MustNewType(typeStr)
+	indexManagers = make(map[component.ID]*IndexManager)
+	indexManagerMutex sync.RWMutex
+)
+
+// getOrCreateIndexManager returns an existing IndexManager for the component ID or creates a new one
+func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger) *IndexManager {
+	indexManagerMutex.Lock()
+	defer indexManagerMutex.Unlock()
+	
+	if indexManager, exists := indexManagers[id]; exists {
+		return indexManager
+	}
+	
+	indexManager := NewIndexManager(config, logger)
+	indexManagers[id] = indexManager
+	return indexManager
+}
 
 func NewFactory() exporter.Factory {
 	return exporter.NewFactory(
@@ -34,7 +53,12 @@ func createTracesExporter(
 
 	set.Logger.Info("Creating traces exporter", zap.String("componentID", set.ID.String()))
 
-	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = getOrCreateIndexManager(set.ID, config, set.Logger)
+	}
+
+	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +85,12 @@ func createLogsExporter(
 
 	set.Logger.Info("Creating logs exporter", zap.String("componentID", set.ID.String()))
 
-	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = getOrCreateIndexManager(set.ID, config, set.Logger)
+	}
+
+	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 	if err != nil {
 		return nil, err
 	}
