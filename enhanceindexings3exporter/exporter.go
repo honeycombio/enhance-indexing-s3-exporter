@@ -36,6 +36,8 @@ type MinuteIndexBatch struct {
 // IndexManager manages shared index state across multiple exporters
 type IndexManager struct {
 	mutex              sync.RWMutex
+	startOnce          sync.Once
+	shutdownOnce       sync.Once
 	minuteIndexBatches map[int]*MinuteIndexBatch
 	ticker             *time.Ticker
 	config             *Config
@@ -152,12 +154,8 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	// Initialize IndexManager if indexing is enabled
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		var startOnce sync.Once
-
-		// Ensure that the index manager is started only once
-		startOnce.Do(func() {
+		e.indexManager.startOnce.Do(func() {
 			err := e.indexManager.start(ctx, e.s3Writer)
 			if err != nil {
 				e.logger.Error("Failed to start index manager", zap.Error(err))
@@ -170,10 +168,7 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		var shutdownOnce sync.Once
-
-		// Ensure that the index manager is shutdown only once
-		shutdownOnce.Do(func() {
+		e.indexManager.shutdownOnce.Do(func() {
 			err := e.indexManager.shutdown(ctx)
 			if err != nil {
 				e.logger.Error("Failed to shutdown index manager", zap.Error(err))
