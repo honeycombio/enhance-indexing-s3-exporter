@@ -30,16 +30,16 @@ func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger
 	})
 
 	// First, try to read with RLock
-	indexManagerMutex.RLock()
+	indexManagersMutex.RLock()
 	if indexManager, exists := indexManagers[id]; exists {
-		indexManagerMutex.RUnlock()
+		indexManagersMutex.RUnlock()
 		return indexManager
 	}
-	indexManagerMutex.RUnlock()
+	indexManagersMutex.RUnlock()
 
 	// Not found, acquire write lock to create
-	indexManagerMutex.Lock()
-	defer indexManagerMutex.Unlock()
+	indexManagersMutex.Lock()
+	defer indexManagersMutex.Unlock()
 	// Double-check in case it was created in the meantime
 	if indexManager, exists := indexManagers[id]; exists {
 		return indexManager
