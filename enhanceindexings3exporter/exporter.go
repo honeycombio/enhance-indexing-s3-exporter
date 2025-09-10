@@ -78,10 +78,12 @@ func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
 // and adding it to the index manager's minuteIndexBatches map
 func (im *IndexManager) ensureMinuteBatch(minute int) {
 	im.mutex.Lock()
-	im.minuteIndexBatches[minute] = &MinuteIndexBatch{
-		fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+	defer im.mutex.Unlock()
+	if _, ok := im.minuteIndexBatches[minute]; !ok {
+		im.minuteIndexBatches[minute] = &MinuteIndexBatch{
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+		}
 	}
-	im.mutex.Unlock()
 }
 
 // start initializes the IndexManager
@@ -211,9 +213,7 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	}
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
-	if _, ok := im.minuteIndexBatches[minute]; !ok {
-		im.ensureMinuteBatch(minute)
-	}
+	im.ensureMinuteBatch(minute)
 }
 
 // readyToUpload checks if the minute batch is ready to be uploaded
@@ -233,9 +233,7 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	defer im.mutex.Unlock()
 
 	// Ensure the batch exists for this minute
-	if _, ok := im.minuteIndexBatches[minute]; !ok {
-		im.ensureMinuteBatch(minute)
-	}
+	im.ensureMinuteBatch(minute)
 
 	currentBatch := im.minuteIndexBatches[minute]
 	currentBatch.minuteDir = filepath.Dir(s3Key)
