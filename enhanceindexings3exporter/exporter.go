@@ -193,8 +193,8 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
 	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
 
-	im.mutex.RLock()
-	defer im.mutex.RUnlock()
+	im.mutex.Lock()
+	defer im.mutex.Unlock()
 
 	// Check if there are any index batches that are ready to be uploaded
 	for minute, indexBatch := range im.minuteIndexBatches {
