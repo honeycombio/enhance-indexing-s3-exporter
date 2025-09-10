@@ -16,20 +16,26 @@ const (
 )
 
 var (
-	componentType = component.MustNewType(typeStr)
-	indexManagers = make(map[component.ID]*IndexManager)
+	componentType     = component.MustNewType(typeStr)
+	indexManagers     map[component.ID]*IndexManager
 	indexManagerMutex sync.RWMutex
+	indexManagersOnce sync.Once
 )
 
 // getOrCreateIndexManager returns an existing IndexManager for the component ID or creates a new one
 func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger) *IndexManager {
+	// Ensure indexManagers map is initialized exactly once
+	indexManagersOnce.Do(func() {
+		indexManagers = make(map[component.ID]*IndexManager)
+	})
+
 	indexManagerMutex.Lock()
 	defer indexManagerMutex.Unlock()
-	
+
 	if indexManager, exists := indexManagers[id]; exists {
 		return indexManager
 	}
-	
+
 	indexManager := NewIndexManager(config, logger)
 	indexManagers[id] = indexManager
 	return indexManager
