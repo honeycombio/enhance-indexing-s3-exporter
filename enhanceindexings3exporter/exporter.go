@@ -193,13 +193,13 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
 	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
 
-	im.mutex.RLock()
-
 	// Check if there are any index batches that are ready to be uploaded
 	for minute, indexBatch := range im.minuteIndexBatches {
 		if im.readyToUpload(minute) {
+			im.mutex.RLock()
 			im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
 			err := im.uploadBatch(ctx, indexBatch)
+			im.mutex.RUnlock()
 			if err != nil {
 				im.logger.Error("Failed to upload index batch", zap.Error(err))
 				break
@@ -209,8 +209,6 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 			delete(im.minuteIndexBatches, minute)
 		}
 	}
-
-	im.mutex.RUnlock()
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
 	if _, ok := im.minuteIndexBatches[minute]; !ok {

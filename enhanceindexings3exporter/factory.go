@@ -16,10 +16,10 @@ const (
 )
 
 var (
-	componentType     = component.MustNewType(typeStr)
-	indexManagers     map[component.ID]*IndexManager
-	indexManagerMutex sync.RWMutex
-	indexManagersOnce sync.Once
+	componentType      = component.MustNewType(typeStr)
+	indexManagers      map[component.ID]*IndexManager
+	indexManagersMutex sync.RWMutex
+	indexManagersOnce  sync.Once
 )
 
 // getOrCreateIndexManager returns an existing IndexManager for the component ID or creates a new one
