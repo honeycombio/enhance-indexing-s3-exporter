@@ -29,13 +29,21 @@ func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger
 		indexManagers = make(map[component.ID]*IndexManager)
 	})
 
+	// First, try to read with RLock
+	indexManagerMutex.RLock()
+	if indexManager, exists := indexManagers[id]; exists {
+		indexManagerMutex.RUnlock()
+		return indexManager
+	}
+	indexManagerMutex.RUnlock()
+
+	// Not found, acquire write lock to create
 	indexManagerMutex.Lock()
 	defer indexManagerMutex.Unlock()
-
+	// Double-check in case it was created in the meantime
 	if indexManager, exists := indexManagers[id]; exists {
 		return indexManager
 	}
-
 	indexManager := NewIndexManager(config, logger)
 	indexManagers[id] = indexManager
 	return indexManager
