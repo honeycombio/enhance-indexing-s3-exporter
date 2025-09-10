@@ -60,12 +60,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 
 // NewIndexManager creates a new IndexManager
 func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
-	// Some fields are automatically indexed if indexing is enabled
 	if config.IndexConfig.Enabled {
-		if !slices.Contains(config.IndexConfig.IndexedFields, fieldName("trace_id")) {
-			config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName("trace_id"))
-		}
-
 		if !slices.Contains(config.IndexConfig.IndexedFields, fieldName("session.id")) {
 			config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName("session.id"))
 		}
@@ -250,10 +245,7 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
 
-				// The trace id is always indexed. On a ptrace.Span, the trace id is extracted with the span.TraceID().String() method
-				// but it's important to note that the trace id is not a span attribute that can be found by looping over the span.Attributes() map,
-				// rather it is a special field in the span message called traceId.
-				// After getting the trace id value, it is added to the trace_id field index.
+				// trace id is always indexed
 				traceID := span.TraceID().String()
 				traceIDFName := fieldName("trace_id")
 				traceIDFVal := fieldValue(traceID)
@@ -443,6 +435,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 	e.logger.Info("Consuming logs", zap.Int("logRecordCount", logs.LogRecordCount()))
 
+	// TODO: Add log fields to index
+
 	var marshaler plog.Marshaler
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
 		marshaler = &plog.JSONMarshaler{}
@@ -456,15 +450,6 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 
 	e.logger.Info("Uploading logs", zap.Int("logRecordCount", logs.LogRecordCount()))
-	s3Key, minute, err := e.s3Writer.WriteBuffer(ctx, buf, "logs")
-	if err != nil {
-		return err
-	}
-
-	// Add to index batch if enabled
-	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		e.indexManager.addLogsToIndex(logs, s3Key, minute)
-	}
-
-	return nil
+	_, _, err = e.s3Writer.WriteBuffer(ctx, buf, "logs")
+	return err
 }
