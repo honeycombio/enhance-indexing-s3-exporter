@@ -24,26 +24,18 @@ var (
 
 // getOrCreateIndexManager returns an existing IndexManager for the component ID or creates a new one
 func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger) *IndexManager {
+	indexManagersMutex.Lock()
+	defer indexManagersMutex.Unlock()
+
 	// Ensure indexManagers map is initialized exactly once
 	indexManagersOnce.Do(func() {
 		indexManagers = make(map[component.ID]*IndexManager)
 	})
 
-	// First, try to read with RLock
-	indexManagersMutex.RLock()
 	if indexManager, exists := indexManagers[id]; exists {
-		indexManagersMutex.RUnlock()
 		return indexManager
 	}
-	indexManagersMutex.RUnlock()
 
-	// Not found, acquire write lock to create
-	indexManagersMutex.Lock()
-	defer indexManagersMutex.Unlock()
-	// Double-check in case it was created in the meantime
-	if indexManager, exists := indexManagers[id]; exists {
-		return indexManager
-	}
 	indexManager := NewIndexManager(config, logger)
 	indexManagers[id] = indexManager
 	return indexManager

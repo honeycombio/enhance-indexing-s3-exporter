@@ -154,10 +154,15 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	// Initialize IndexManager if indexing is enabled
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		err := e.indexManager.start(ctx, e.s3Writer)
-		if err != nil {
-			return err
-		}
+		var startOnce sync.Once
+
+		// Ensure that the index manager is started only once
+		startOnce.Do(func() {
+			err := e.indexManager.start(ctx, e.s3Writer)
+			if err != nil {
+				e.logger.Error("Failed to start index manager", zap.Error(err))
+			}
+		})
 	}
 
 	return nil
@@ -165,7 +170,15 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		return e.indexManager.shutdown(ctx)
+		var shutdownOnce sync.Once
+
+		// Ensure that the index manager is shutdown only once
+		shutdownOnce.Do(func() {
+			err := e.indexManager.shutdown(ctx)
+			if err != nil {
+				e.logger.Error("Failed to shutdown index manager", zap.Error(err))
+			}
+		})
 	}
 	return nil
 }
