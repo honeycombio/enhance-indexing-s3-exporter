@@ -89,18 +89,25 @@ func TestConsumeTraces(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := zap.NewNop()
-			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger)
+			var indexManager *IndexManager
+			if tt.config.IndexConfig.Enabled {
+				indexManager = NewIndexManager(tt.config, logger)
+			}
+			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger, indexManager)
 			require.NoError(t, err)
 
 			// Mock the s3Writer
 			mockWriter := createMockS3Writer(&tt.config.S3Uploader, tt.config.MarshalerName, logger)
 			exporter.s3Writer = mockWriter
+			if exporter.indexManager != nil {
+				exporter.indexManager.s3Writer = mockWriter
+			}
 			mockUploader := mockWriter.uploader.(*mockS3Uploader)
 			// Initialize index batches if indexing is enabled
 			if tt.config.IndexConfig.Enabled {
 				// Get the current minute to match what WriteBuffer will return
 				currentMinute := time.Now().UTC().Minute()
-				exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+				exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
 					currentMinute: {
 						fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
 					},
@@ -118,7 +125,7 @@ func TestConsumeTraces(t *testing.T) {
 			if tt.expectIndexing {
 				// Check that index was updated
 				currentMinute := time.Now().UTC().Minute()
-				batch := exporter.minuteIndexBatches[currentMinute]
+				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
 				assert.NotNil(t, batch)
 
 				// Check that trace_id and session.id are indexed automatically
@@ -151,7 +158,11 @@ func TestConsumeLogs(t *testing.T) {
 		},
 	}
 
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = NewIndexManager(config, logger)
+	}
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Mock the s3Writer
@@ -160,7 +171,6 @@ func TestConsumeLogs(t *testing.T) {
 	mockUploader := mockWriter.uploader.(*mockS3Uploader)
 	logs := createTestLogs()
 	ctx := context.Background()
-
 	err = exporter.consumeLogs(ctx, logs)
 
 	require.NoError(t, err)
@@ -172,7 +182,7 @@ func TestConsumeLogs(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestAddToIndex(t *testing.T) {
+func TestAddTracesToIndex(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
 		IndexConfig: IndexConfig{
@@ -181,11 +191,15 @@ func TestAddToIndex(t *testing.T) {
 		},
 	}
 
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = NewIndexManager(config, logger)
+	}
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Initialize index batch
-	exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+	exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
 		30: {
 			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
 		},
@@ -195,10 +209,10 @@ func TestAddToIndex(t *testing.T) {
 	s3Key := "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30/traces_uuid.binpb.gz"
 	minute := 30
 
-	exporter.addToIndex(traces, s3Key, minute)
+	exporter.indexManager.addTracesToIndex(traces, s3Key, minute)
 
 	// Verify index was updated correctly
-	batch := exporter.minuteIndexBatches[minute]
+	batch := exporter.indexManager.minuteIndexBatches[minute]
 	assert.Equal(t, "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30", batch.minuteDir)
 
 	// Check trace_id indexing
@@ -254,12 +268,19 @@ func TestMarshalIndex(t *testing.T) {
 			logger := zap.NewNop()
 			config := &Config{
 				MarshalerName: tt.marshalerName,
+				IndexConfig: IndexConfig{
+					Enabled: true,
+				},
 			}
 
-			exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+			var indexManager *IndexManager
+			if config.IndexConfig.Enabled {
+				indexManager = NewIndexManager(config, logger)
+			}
+			exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 			require.NoError(t, err)
 
-			data, err := exporter.marshalIndex(tt.fieldName, tt.fieldIndex)
+			data, err := exporter.indexManager.marshalIndex(tt.fieldName, tt.fieldIndex)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -291,14 +312,24 @@ func TestUploadBatch(t *testing.T) {
 		S3Uploader: awss3exporter.S3UploaderConfig{
 			Compression: "gzip",
 		},
+		IndexConfig: IndexConfig{
+			Enabled: true,
+		},
 	}
 
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = NewIndexManager(config, logger)
+	}
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Mock the s3Writer
 	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
 	exporter.s3Writer = mockWriter
+	if exporter.indexManager != nil {
+		exporter.indexManager.s3Writer = mockWriter
+	}
 	mockUploader := mockWriter.uploader.(*mockS3Uploader)
 	// Create test batch
 	batch := &MinuteIndexBatch{
@@ -321,7 +352,7 @@ func TestUploadBatch(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = exporter.uploadBatch(ctx, batch)
+	err = exporter.indexManager.uploadBatch(ctx, batch)
 
 	require.NoError(t, err)
 
@@ -342,17 +373,24 @@ func TestRolloverIndexes(t *testing.T) {
 		},
 	}
 
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger)
+	var indexManager *IndexManager
+	if config.IndexConfig.Enabled {
+		indexManager = NewIndexManager(config, logger)
+	}
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Mock the s3Writer
 	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
 	exporter.s3Writer = mockWriter
+	if exporter.indexManager != nil {
+		exporter.indexManager.s3Writer = mockWriter
+	}
 	mockUploader := mockWriter.uploader.(*mockS3Uploader)
 
 	// Initialize with old minute batch
 	oldMinute := (time.Now().UTC().Minute() + 1) % 60
-	exporter.minuteIndexBatches = map[int]*MinuteIndexBatch{
+	exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
 		oldMinute: {
 			fieldIndexes: map[fieldName]map[fieldValue]fieldS3Keys{
 				"user.id": {
@@ -364,15 +402,15 @@ func TestRolloverIndexes(t *testing.T) {
 
 	// Call rollover
 	ctx := context.Background()
-	exporter.rolloverIndexes(ctx)
+	exporter.indexManager.rolloverIndexes(ctx)
 
 	// Verify that old batch was uploaded and removed
 	assert.Len(t, mockUploader.uploadCalls, 1)
-	assert.Empty(t, exporter.minuteIndexBatches[oldMinute])
+	assert.Empty(t, exporter.indexManager.minuteIndexBatches[oldMinute])
 
 	// Verify new batch was created for current minute
 	currentMinute := time.Now().UTC().Minute()
-	assert.NotNil(t, exporter.minuteIndexBatches[currentMinute])
+	assert.NotNil(t, exporter.indexManager.minuteIndexBatches[currentMinute])
 }
 
 func createMockS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3exporter.MarshalerType, logger *zap.Logger) *S3Writer {
@@ -410,7 +448,9 @@ func createTestLogs() plog.Logs {
 	lr.Body().SetStr("test log message")
 
 	lr.Attributes().PutStr("level", "info")
+	lr.Attributes().PutStr("customer.id", "cust123")
 	lr.Attributes().PutStr("service", "test-service")
+	lr.Attributes().PutInt("session.id", 12345)
 
 	return logs
 }

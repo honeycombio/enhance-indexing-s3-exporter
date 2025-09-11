@@ -33,26 +33,103 @@ type MinuteIndexBatch struct {
 	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys // field_name -> {field_value -> slice of s3 keys}
 }
 
-type enhanceIndexingS3Exporter struct {
+// IndexManager manages shared index state across multiple exporters
+type IndexManager struct {
+	mutex              sync.RWMutex
+	startOnce          sync.Once
+	shutdownOnce       sync.Once
+	minuteIndexBatches map[int]*MinuteIndexBatch
+	ticker             *time.Ticker
 	config             *Config
 	logger             *zap.Logger
 	s3Writer           S3WriterInterface
-	ticker             *time.Ticker
-	indexMutex         sync.RWMutex
-	minuteIndexBatches map[int]*MinuteIndexBatch
 }
 
-func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger) (*enhanceIndexingS3Exporter, error) {
-	if cfg.IndexConfig.Enabled {
-		if !slices.Contains(cfg.IndexConfig.IndexedFields, fieldName("session.id")) {
-			cfg.IndexConfig.IndexedFields = append(cfg.IndexConfig.IndexedFields, fieldName("session.id"))
+type enhanceIndexingS3Exporter struct {
+	config       *Config
+	logger       *zap.Logger
+	s3Writer     S3WriterInterface
+	indexManager *IndexManager
+}
+
+func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
+	return &enhanceIndexingS3Exporter{
+		config:       cfg,
+		logger:       logger,
+		indexManager: indexManager,
+	}, nil
+}
+
+// NewIndexManager creates a new IndexManager
+func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
+	if config.IndexConfig.Enabled {
+		if !slices.Contains(config.IndexConfig.IndexedFields, fieldName("session.id")) {
+			config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName("session.id"))
 		}
 	}
 
-	return &enhanceIndexingS3Exporter{
-		config: cfg,
-		logger: logger,
-	}, nil
+	return &IndexManager{
+		minuteIndexBatches: make(map[int]*MinuteIndexBatch),
+		config:             config,
+		logger:             logger,
+	}
+}
+
+// ensureMinuteBatch ensures that the minute batch exists for the given minute
+// by creating an empty MinuteIndexBatch with the given minute
+// and adding it to the index manager's minuteIndexBatches map
+func (im *IndexManager) ensureMinuteBatch(minute int) {
+	im.mutex.Lock()
+	defer im.mutex.Unlock()
+	if _, ok := im.minuteIndexBatches[minute]; !ok {
+		im.minuteIndexBatches[minute] = &MinuteIndexBatch{
+			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+		}
+	}
+}
+
+// start initializes the IndexManager
+func (im *IndexManager) start(ctx context.Context, s3Writer S3WriterInterface) error {
+	im.startOnce.Do(func() {
+		im.s3Writer = s3Writer
+
+		// Initialize an empty index batch for the current minute
+		minute := time.Now().UTC().Minute()
+		im.ensureMinuteBatch(minute)
+		im.startTimer(ctx)
+	})
+	return nil
+}
+
+// shutdown stops the IndexManager
+func (im *IndexManager) shutdown(ctx context.Context) error {
+	im.shutdownOnce.Do(func() {
+		// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
+		if im.ticker != nil {
+			im.ticker.Stop()
+		}
+
+		// TODO figure out if we need to wait for the upload to finish before continuing
+
+		// Upload any remaining batch data
+		im.mutex.Lock()
+		defer im.mutex.Unlock()
+
+		if len(im.minuteIndexBatches) > 0 {
+			im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
+			for minute, batch := range im.minuteIndexBatches {
+				err := im.uploadBatch(ctx, batch)
+				if err != nil {
+					im.logger.Error("Failed to upload remaining index data", zap.Error(err))
+					break
+				}
+
+				im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
+				delete(im.minuteIndexBatches, minute)
+			}
+		}
+	})
+	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
@@ -80,114 +157,94 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	// Start index checking and uploading timer if indexing is enabled
-	if e.config.IndexConfig.Enabled {
-		// Initialize an empty index batch for the current minute
-		minute := time.Now().UTC().Minute()
-		e.minuteIndexBatches = map[int]*MinuteIndexBatch{}
-		e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+		err := e.indexManager.start(ctx, e.s3Writer)
+		if err != nil {
+			e.logger.Error("Failed to start index manager", zap.Error(err))
+			return err
 		}
-
-		e.startTimer(ctx)
 	}
 
 	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
-	// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
-	if e.ticker != nil {
-		e.ticker.Stop()
-	}
-
-	// TODO figure out if we need to wait for the upload to finish before continuing
-
-	// Upload any remaining batch data
-	e.indexMutex.Lock()
-	if len(e.minuteIndexBatches) > 0 {
-		e.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(e.minuteIndexBatches)))
-		for minute, batch := range e.minuteIndexBatches {
-			err := e.uploadBatch(ctx, batch)
-			if err != nil {
-				e.logger.Error("Failed to upload remaining index data", zap.Error(err))
-				e.indexMutex.Unlock()
-				return err
-			}
-
-			e.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
-			delete(e.minuteIndexBatches, minute)
+	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+		err := e.indexManager.shutdown(ctx)
+		if err != nil {
+			e.logger.Error("Failed to shutdown index manager", zap.Error(err))
+			return err
 		}
 	}
-
-	e.indexMutex.Unlock()
-
 	return nil
 }
 
 // startTimer starts a timer that triggers every 30 seconds, which will check for
 // index batches that are ready to be uploaded and uploads them. It also initializes
 // an empty index batch for the current minute.
-func (e *enhanceIndexingS3Exporter) startTimer(ctx context.Context) {
-	e.logger.Info("Starting index batch timer")
+func (im *IndexManager) startTimer(ctx context.Context) {
+	im.logger.Info("Starting index batch timer")
 
 	// Set up a recurring timer for every 30 seconds - the ticker is stopped in the shutdown function
-	e.ticker = time.NewTicker(30 * time.Second)
+	im.ticker = time.NewTicker(30 * time.Second)
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-e.ticker.C:
+			case <-im.ticker.C:
 				// blocking so we don't have multiple rollovers running simultaneously
-				e.rolloverIndexes(ctx)
+				im.rolloverIndexes(ctx)
 			}
 		}
 	}()
 }
 
-func (e *enhanceIndexingS3Exporter) rolloverIndexes(ctx context.Context) {
+func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
-	e.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
+	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
 
 	// Check if there are any index batches that are ready to be uploaded
-	for minute, indexBatch := range e.minuteIndexBatches {
-		if e.readyToUpload(minute) {
-			e.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
-			err := e.uploadBatch(ctx, indexBatch)
+	for minute, indexBatch := range im.minuteIndexBatches {
+		if im.readyToUpload(minute) {
+			im.mutex.RLock()
+			im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
+			err := im.uploadBatch(ctx, indexBatch)
+			im.mutex.RUnlock()
 			if err != nil {
-				e.logger.Error("Failed to upload index batch", zap.Error(err))
+				im.logger.Error("Failed to upload index batch", zap.Error(err))
 				break
 			}
 
-			e.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
-			delete(e.minuteIndexBatches, minute)
+			im.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
+			delete(im.minuteIndexBatches, minute)
 		}
 	}
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
-	if _, ok := e.minuteIndexBatches[minute]; !ok {
-		e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
-		}
-	}
+	im.ensureMinuteBatch(minute)
 }
 
 // readyToUpload checks if the minute batch is ready to be uploaded
 // If the current minute is not equal to the minute of the index batch, the index batch is ready to be uploaded
-func (e *enhanceIndexingS3Exporter) readyToUpload(minute int) bool {
+func (im *IndexManager) readyToUpload(minute int) bool {
 	return time.Now().UTC().Minute() != minute
 }
 
-// addToIndex adds trace field information to the current minute's MinuteIndexBatch
-// assuming that the field is configured to be indexed. Trace ID is always indexed.
-// Additional fields are indexed if they are present in configuration.
-// The minute comes from the s3Key generated by the s3Writer.WriteBuffer function
-func (e *enhanceIndexingS3Exporter) addToIndex(traces ptrace.Traces, s3Key string, minute int) {
-	e.indexMutex.Lock()
-	defer e.indexMutex.Unlock()
-	currentBatch := e.minuteIndexBatches[minute]
+// addTracesToIndex adds trace field information to the current minute's
+// MinuteIndexBatch assuming that the field is configured to be indexed.  Trace
+// ID is always indexed and will be extracted from the span.TraceID().String()
+// method.  Additional fields are indexed if they are present in configuration.
+// The minute passed in comes from the s3Key generated by the
+// s3Writer.WriteBuffer function
+func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, minute int) {
+	// Ensure the batch exists for this minute
+	im.ensureMinuteBatch(minute)
 
+	im.mutex.Lock()
+	defer im.mutex.Unlock()
+
+	currentBatch := im.minuteIndexBatches[minute]
 	currentBatch.minuteDir = filepath.Dir(s3Key)
 
 	// Extract and add field values to current batch
@@ -215,7 +272,7 @@ func (e *enhanceIndexingS3Exporter) addToIndex(traces ptrace.Traces, s3Key strin
 				// Index configured fields
 				span.Attributes().Range(func(attrKey string, v pcommon.Value) bool {
 					// Check if the field is configured to be indexed
-					if slices.Contains(e.config.IndexConfig.IndexedFields, fieldName(attrKey)) {
+					if slices.Contains(im.config.IndexConfig.IndexedFields, fieldName(attrKey)) {
 						fn := fieldName(attrKey)
 						fv := fieldValue(v.AsString())
 
@@ -237,17 +294,17 @@ func (e *enhanceIndexingS3Exporter) addToIndex(traces ptrace.Traces, s3Key strin
 }
 
 // marshalIndex marshals the index using the configured marshaler type
-func (e *enhanceIndexingS3Exporter) marshalIndex(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
+func (im *IndexManager) marshalIndex(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+	if im.config.MarshalerName == awss3exporter.OtlpJSON {
 		return json.Marshal(fieldIndex)
 	} else {
 		// For protobuf, we use the generated protobuf methods
-		return e.marshalIndexAsProtobuf(fieldName, fieldIndex)
+		return im.marshalIndexAsProtobuf(fieldName, fieldIndex)
 	}
 }
 
 // marshalIndexAsProtobuf encodes the index using generated protobuf methods
-func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
+func (im *IndexManager) marshalIndexAsProtobuf(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	// Create the protobuf FieldIndex structure
 	fieldIndexProto := &index.FieldIndex{
 		FieldName:  fieldName,
@@ -268,39 +325,39 @@ func (e *enhanceIndexingS3Exporter) marshalIndexAsProtobuf(fieldName string, fie
 }
 
 // uploadBatch uploads all index files for a completed minute batch
-func (e *enhanceIndexingS3Exporter) uploadBatch(ctx context.Context, batch *MinuteIndexBatch) error {
+func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch) error {
 	if len(batch.fieldIndexes) == 0 {
-		e.logger.Info("No index data to upload")
+		im.logger.Info("No index data to upload")
 		return nil
 	}
 
 	for fName, fIndex := range batch.fieldIndexes {
-		indexData, err := e.marshalIndex(string(fName), fIndex)
+		indexData, err := im.marshalIndex(string(fName), fIndex)
 		if err != nil {
-			e.logger.Error("Failed to marshal index", zap.Error(err), zap.String("field", string(fName)))
+			im.logger.Error("Failed to marshal index", zap.Error(err), zap.String("field", string(fName)))
 			return err
 		}
 
 		// Determine file extension based on marshaler
 		var fileExt string
-		if e.config.MarshalerName == awss3exporter.OtlpJSON {
+		if im.config.MarshalerName == awss3exporter.OtlpJSON {
 			fileExt = "json"
 		} else {
 			fileExt = "binpb" // binary protobuf
 		}
 
 		indexKey := fmt.Sprintf("%s/index_%s_%s.%s", batch.minuteDir, string(fName), uuid.New().String(), fileExt)
-		if e.config.S3Uploader.Compression == "gzip" {
+		if im.config.S3Uploader.Compression == "gzip" {
 			indexKey += ".gz"
 		}
 
-		_, _, err = e.s3Writer.WriteBufferWithIndex(ctx, indexData, "index", indexKey)
+		_, _, err = im.s3Writer.WriteBufferWithIndex(ctx, indexData, "index", indexKey)
 		if err != nil {
-			e.logger.Error("Failed to upload index", zap.Error(err), zap.String("field", string(fName)))
+			im.logger.Error("Failed to upload index", zap.Error(err), zap.String("field", string(fName)))
 			return err
 		}
 
-		e.logger.Info("Uploaded index", zap.String("field", string(fName)), zap.String("key", indexKey), zap.String("format", string(e.config.MarshalerName)))
+		im.logger.Info("Uploaded index", zap.String("field", string(fName)), zap.String("key", indexKey), zap.String("format", string(im.config.MarshalerName)))
 	}
 
 	return nil
@@ -328,15 +385,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 
 	// Add to index batch if enabled
-	if e.config.IndexConfig.Enabled {
-		if _, ok := e.minuteIndexBatches[minute]; !ok {
-			e.logger.Info("No index batch found for current minute, creating empty index batch before adding to index", zap.Int("minute", minute))
-			e.minuteIndexBatches[minute] = &MinuteIndexBatch{
-				fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
-			}
-		}
-
-		e.addToIndex(traces, s3Key, minute)
+	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+		e.indexManager.addTracesToIndex(traces, s3Key, minute)
 	}
 
 	return nil

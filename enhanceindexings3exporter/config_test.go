@@ -24,7 +24,12 @@ func TestConfigMerging(t *testing.T) {
 			// Only create the exporter once.
 			if exp == nil {
 				var err error
-				exp, err = newEnhanceIndexingS3Exporter(cfg.(*Config), set.Logger)
+				config := cfg.(*Config)
+				var indexManager *IndexManager
+				if config.IndexConfig.Enabled {
+					indexManager = NewIndexManager(config, set.Logger)
+				}
+				exp, err = newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 				if err != nil {
 					return nil, err
 				}
