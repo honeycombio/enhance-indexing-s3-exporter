@@ -319,16 +319,21 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 
 				// trace id is always indexed
 				traceID := log.TraceID().String()
-				traceIDFName := fieldName("trace_id")
-				traceIDFVal := fieldValue(traceID)
 
-				if _, ok := currentBatch.fieldIndexes[traceIDFName]; !ok {
-					currentBatch.fieldIndexes[traceIDFName] = map[fieldValue]fieldS3Keys{}
-				}
+				// Trace ID in a plog.LogRecord is specifically defined as an
+				// optional field, so we only index it if it is present
+				if traceID != "" {
+					traceIDFName := fieldName("trace_id")
+					traceIDFVal := fieldValue(traceID)
 
-				// Append the S3 key to the trace id field index if it is not already present
-				if !slices.Contains(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key) {
-					currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = append(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key)
+					if _, ok := currentBatch.fieldIndexes[traceIDFName]; !ok {
+						currentBatch.fieldIndexes[traceIDFName] = map[fieldValue]fieldS3Keys{}
+					}
+
+					// Append the S3 key to the trace id field index if it is not already present
+					if !slices.Contains(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key) {
+						currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = append(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key)
+					}
 				}
 
 				// Index configured fields
