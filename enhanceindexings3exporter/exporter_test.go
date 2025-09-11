@@ -342,6 +342,10 @@ func TestAddLogsToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
 
+	// Check service.name indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
+
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust123")], s3Key)
