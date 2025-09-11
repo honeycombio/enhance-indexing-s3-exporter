@@ -90,42 +90,45 @@ func (im *IndexManager) ensureMinuteBatch(minute int) {
 
 // start initializes the IndexManager
 func (im *IndexManager) start(ctx context.Context, s3Writer S3WriterInterface) error {
-	im.s3Writer = s3Writer
+	im.startOnce.Do(func() {
+		im.s3Writer = s3Writer
 
-	// Initialize an empty index batch for the current minute
-	minute := time.Now().UTC().Minute()
-	im.ensureMinuteBatch(minute)
-	im.startTimer(ctx)
+		// Initialize an empty index batch for the current minute
+		minute := time.Now().UTC().Minute()
+		im.ensureMinuteBatch(minute)
+		im.startTimer(ctx)
+	})
 	return nil
 }
 
 // shutdown stops the IndexManager
 func (im *IndexManager) shutdown(ctx context.Context) error {
-	// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
-	if im.ticker != nil {
-		im.ticker.Stop()
-	}
-
-	// TODO figure out if we need to wait for the upload to finish before continuing
-
-	// Upload any remaining batch data
-	im.mutex.Lock()
-	defer im.mutex.Unlock()
-
-	if len(im.minuteIndexBatches) > 0 {
-		im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
-		for minute, batch := range im.minuteIndexBatches {
-			err := im.uploadBatch(ctx, batch)
-			if err != nil {
-				im.logger.Error("Failed to upload remaining index data", zap.Error(err))
-				return err
-			}
-
-			im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
-			delete(im.minuteIndexBatches, minute)
+	im.shutdownOnce.Do(func() {
+		// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
+		if im.ticker != nil {
+			im.ticker.Stop()
 		}
-	}
 
+		// TODO figure out if we need to wait for the upload to finish before continuing
+
+		// Upload any remaining batch data
+		im.mutex.Lock()
+		defer im.mutex.Unlock()
+
+		if len(im.minuteIndexBatches) > 0 {
+			im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
+			for minute, batch := range im.minuteIndexBatches {
+				err := im.uploadBatch(ctx, batch)
+				if err != nil {
+					im.logger.Error("Failed to upload remaining index data", zap.Error(err))
+					break
+				}
+
+				im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
+				delete(im.minuteIndexBatches, minute)
+			}
+		}
+	})
 	return nil
 }
 
@@ -155,12 +158,11 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		e.indexManager.startOnce.Do(func() {
-			err := e.indexManager.start(ctx, e.s3Writer)
-			if err != nil {
-				e.logger.Error("Failed to start index manager", zap.Error(err))
-			}
-		})
+		err := e.indexManager.start(ctx, e.s3Writer)
+		if err != nil {
+			e.logger.Error("Failed to start index manager", zap.Error(err))
+			return err
+		}
 	}
 
 	return nil
@@ -168,12 +170,11 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 	if e.config.IndexConfig.Enabled && e.indexManager != nil {
-		e.indexManager.shutdownOnce.Do(func() {
-			err := e.indexManager.shutdown(ctx)
-			if err != nil {
-				e.logger.Error("Failed to shutdown index manager", zap.Error(err))
-			}
-		})
+		err := e.indexManager.shutdown(ctx)
+		if err != nil {
+			e.logger.Error("Failed to shutdown index manager", zap.Error(err))
+			return err
+		}
 	}
 	return nil
 }
