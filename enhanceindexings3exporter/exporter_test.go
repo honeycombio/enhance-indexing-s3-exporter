@@ -128,9 +128,10 @@ func TestConsumeTraces(t *testing.T) {
 				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
 				assert.NotNil(t, batch)
 
-				// Check that trace_id and session.id are indexed automatically
+				// Check that trace_id, session.id, and service.name are indexed automatically
 				assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
 				// Check that configured fields are indexed
 				assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
@@ -227,9 +228,10 @@ func TestConsumeLogs(t *testing.T) {
 				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
 				assert.NotNil(t, batch)
 
-				// Check that trace_id and session.id are indexed automatically
+				// Check that trace_id, session.id, and service.name are indexed automatically
 				assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
 				// Check that configured fields are indexed
 				assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
@@ -286,6 +288,10 @@ func TestAddTracesToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
 
+	// Check service.name indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
+
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
@@ -335,6 +341,10 @@ func TestAddLogsToIndex(t *testing.T) {
 	// Check session.id indexing (automatically included when indexing is enabled)
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
+
+	// Check service.name indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
 
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
@@ -546,6 +556,7 @@ func createTestTraces() ptrace.Traces {
 	span.Attributes().PutStr("user.id", "user123")
 	span.Attributes().PutStr("request.id", "req456")
 	span.Attributes().PutInt("session.id", 12345)
+	span.Attributes().PutStr("service.name", "test-service")
 
 	return traces
 }
@@ -565,6 +576,7 @@ func createTestLogs() plog.Logs {
 	lr.Attributes().PutStr("customer.id", "cust123")
 	lr.Attributes().PutStr("service", "test-service")
 	lr.Attributes().PutInt("session.id", 12345)
+	lr.Attributes().PutStr("service.name", "test-service")
 
 	return logs
 }
