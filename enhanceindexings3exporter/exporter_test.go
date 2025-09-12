@@ -128,8 +128,8 @@ func TestConsumeTraces(t *testing.T) {
 				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
 				assert.NotNil(t, batch)
 
-				// Check that trace_id, session.id, and service.name are indexed automatically
-				assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
+				// Check that trace.trace_id and session.id are indexed automatically
+				assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
@@ -228,8 +228,8 @@ func TestConsumeLogs(t *testing.T) {
 				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
 				assert.NotNil(t, batch)
 
-				// Check that trace_id, session.id, and service.name are indexed automatically
-				assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
+				// Check that trace.trace_id and session.id are indexed automatically
+				assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
@@ -279,10 +279,10 @@ func TestAddTracesToIndex(t *testing.T) {
 	batch := exporter.indexManager.minuteIndexBatches[minute]
 	assert.Equal(t, "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30", batch.minuteDir)
 
-	// Check trace_id indexing
+	// Check trace.trace_id indexing
 	traceID := "00000000000000000000000000000001"
-	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue(traceID))
-	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")][fieldValue(traceID)], s3Key)
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue(traceID))
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")][fieldValue(traceID)], s3Key)
 
 	// Check session.id indexing (automatically included when indexing is enabled)
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
@@ -298,7 +298,6 @@ func TestAddTracesToIndex(t *testing.T) {
 
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
-
 }
 
 func TestAddLogsToIndex(t *testing.T) {
@@ -334,9 +333,9 @@ func TestAddLogsToIndex(t *testing.T) {
 	batch := exporter.indexManager.minuteIndexBatches[minute]
 	assert.Equal(t, "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30", batch.minuteDir)
 
-	// Check trace_id indexing
-	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")], fieldValue("00000000000000000000000000000001"))
-	assert.Contains(t, batch.fieldIndexes[fieldName("trace_id")][fieldValue("00000000000000000000000000000001")], s3Key)
+	// Check trace.trace_id indexing
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")][fieldValue("00000000000000000000000000000001")], s3Key)
 
 	// Check session.id indexing (automatically included when indexing is enabled)
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
@@ -354,6 +353,7 @@ func TestAddLogsToIndex(t *testing.T) {
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 
 }
+
 func TestMarshalIndex(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -466,7 +466,7 @@ func TestUploadBatch(t *testing.T) {
 			"session.id": {
 				"12345": {"key5"},
 			},
-			"trace_id": {
+			"trace.trace_id": {
 				"00000000000000000000000000000001": {"key6"},
 			},
 		},
@@ -477,7 +477,7 @@ func TestUploadBatch(t *testing.T) {
 
 	require.NoError(t, err)
 
-	assert.Len(t, mockUploader.uploadCalls, 4) // user.id, request.id, session.id, trace_id
+	assert.Len(t, mockUploader.uploadCalls, 4) // user.id, request.id, session.id, trace.trace_id
 
 	for _, call := range mockUploader.uploadCalls {
 		assert.NotNil(t, call.input)

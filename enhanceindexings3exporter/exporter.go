@@ -260,7 +260,7 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 
 				// trace id is always indexed
 				traceID := span.TraceID().String()
-				traceIDFName := fieldName("trace_id")
+				traceIDFName := fieldName("trace.trace_id")
 				traceIDFVal := fieldValue(traceID)
 
 				if _, ok := currentBatch.fieldIndexes[traceIDFName]; !ok {
@@ -326,7 +326,7 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 				// Trace ID in a plog.LogRecord is specifically defined as an
 				// optional field, so we only index it if it is present
 				if traceID != "" {
-					traceIDFName := fieldName("trace_id")
+					traceIDFName := fieldName("trace.trace_id")
 					traceIDFVal := fieldValue(traceID)
 
 					if _, ok := currentBatch.fieldIndexes[traceIDFName]; !ok {
