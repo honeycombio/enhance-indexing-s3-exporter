@@ -131,6 +131,7 @@ func TestConsumeTraces(t *testing.T) {
 				// Check that trace.trace_id and session.id are indexed automatically
 				assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
 				// Check that configured fields are indexed
 				assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
@@ -230,6 +231,7 @@ func TestConsumeLogs(t *testing.T) {
 				// Check that trace.trace_id and session.id are indexed automatically
 				assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
 				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
 				// Check that configured fields are indexed
 				assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
@@ -247,6 +249,11 @@ func TestConsumeLogs(t *testing.T) {
 func TestAddTracesToIndex(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Region:   "us-east-1",
+			S3Bucket: "test-bucket",
+		},
+		MarshalerName: awss3exporter.OtlpProtobuf,
 		IndexConfig: IndexConfig{
 			Enabled:       true,
 			IndexedFields: []fieldName{"user.id"},
@@ -286,13 +293,24 @@ func TestAddTracesToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
 
+	// Check service.name indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
+
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
 
+	require.NoError(t, err)
+	assert.Len(t, mockUploader.uploadCalls, 1)
+	assert.Contains(t, *mockUploader.uploadCalls[0].input.Key, "logs_")
+
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 
+	// Clean up after checking
+	err = exporter.shutdown(ctx)
+	require.NoError(t, err)
 }
 
 func TestAddLogsToIndex(t *testing.T) {
@@ -336,6 +354,10 @@ func TestAddLogsToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("session.id")][fieldValue("12345")], s3Key)
 
+	// Check service.name indexing (automatically included when indexing is enabled)
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
+
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust123")], s3Key)
@@ -344,6 +366,7 @@ func TestAddLogsToIndex(t *testing.T) {
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 
 }
+
 func TestMarshalIndex(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -546,6 +569,7 @@ func createTestTraces() ptrace.Traces {
 	span.Attributes().PutStr("user.id", "user123")
 	span.Attributes().PutStr("request.id", "req456")
 	span.Attributes().PutInt("session.id", 12345)
+	span.Attributes().PutStr("service.name", "test-service")
 
 	return traces
 }
@@ -565,6 +589,7 @@ func createTestLogs() plog.Logs {
 	lr.Attributes().PutStr("customer.id", "cust123")
 	lr.Attributes().PutStr("service", "test-service")
 	lr.Attributes().PutInt("session.id", 12345)
+	lr.Attributes().PutStr("service.name", "test-service")
 
 	return logs
 }
