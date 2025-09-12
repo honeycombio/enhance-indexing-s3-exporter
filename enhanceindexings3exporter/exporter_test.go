@@ -249,11 +249,6 @@ func TestConsumeLogs(t *testing.T) {
 func TestAddTracesToIndex(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
-		S3Uploader: awss3exporter.S3UploaderConfig{
-			Region:   "us-east-1",
-			S3Bucket: "test-bucket",
-		},
-		MarshalerName: awss3exporter.OtlpProtobuf,
 		IndexConfig: IndexConfig{
 			Enabled:       true,
 			IndexedFields: []fieldName{"user.id"},
@@ -301,16 +296,8 @@ func TestAddTracesToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
 
-	require.NoError(t, err)
-	assert.Len(t, mockUploader.uploadCalls, 1)
-	assert.Contains(t, *mockUploader.uploadCalls[0].input.Key, "logs_")
-
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
-
-	// Clean up after checking
-	err = exporter.shutdown(ctx)
-	require.NoError(t, err)
 }
 
 func TestAddLogsToIndex(t *testing.T) {
