@@ -101,11 +101,6 @@ func (w *S3Writer) generateKey(signalType string) (string, int) {
 		prefix += "/"
 	}
 
-	filePrefix := w.config.FilePrefix
-	if filePrefix == "" {
-		filePrefix = signalType
-	}
-
 	var marshalerName string
 	if w.marshaler == awss3exporter.OtlpJSON {
 		marshalerName = "json"
@@ -113,7 +108,7 @@ func (w *S3Writer) generateKey(signalType string) (string, int) {
 		marshalerName = "binpb"
 	}
 
-	filename := fmt.Sprintf("%s_%s.%s", filePrefix, uuid.New().String(), marshalerName)
+	filename := fmt.Sprintf("%s_%s.%s", signalType, uuid.New().String(), marshalerName)
 	if w.config.Compression == "gzip" {
 		filename += ".gz"
 	}

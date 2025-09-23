@@ -84,21 +84,6 @@ func TestWriteBuffer(t *testing.T) {
 			expectCompression: true,
 		},
 		{
-			name: "with custom file prefix",
-			config: &awss3exporter.S3UploaderConfig{
-				S3Bucket:          "test-bucket",
-				Region:            "us-east-1",
-				S3Prefix:          "traces-and-logs/",
-				FilePrefix:        "custom-prefix",
-				S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-			},
-			testData:          []byte("test data"),
-			signalType:        "traces",
-			expectedPrefix:    "",
-			checkCustomPrefix: true,
-			expectCompression: false,
-		},
-		{
 			name: "with large data",
 			config: &awss3exporter.S3UploaderConfig{
 				S3Bucket:          "test-bucket",
@@ -176,7 +161,7 @@ func TestWriteBuffer(t *testing.T) {
 
 			// Additional checks based on test case
 			if tt.checkCustomPrefix {
-				assert.Contains(t, key, "custom-prefix_")
+				assert.NotContains(t, key, "custom-prefix_")
 			}
 			if tt.expectedPrefix != "" {
 				assert.Contains(t, key, tt.expectedPrefix)
