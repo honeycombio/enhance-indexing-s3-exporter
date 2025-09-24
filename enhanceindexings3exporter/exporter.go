@@ -62,15 +62,6 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 
 // NewIndexManager creates a new IndexManager
 func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
-	// Some fields are indexed automatically, so we add them to the indexed fields list if they are not already present
-	if config.IndexConfig.Enabled {
-		for _, field := range []string{"session.id", "service.name"} {
-			if !slices.Contains(config.IndexConfig.IndexedFields, fieldName(field)) {
-				config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName(field))
-			}
-		}
-	}
-
 	return &IndexManager{
 		minuteIndexBatches: make(map[int]*MinuteIndexBatch),
 		config:             config,
