@@ -253,6 +253,27 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	// Extract and add field values to current batch
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rs := traces.ResourceSpans().At(i)
+
+		// Some fields are Attributes of the Resource and are indexed automatically,
+		// so we add them to the indexed fields list if they are not already present
+		for _, field := range []string{"service.name", "session.id"} {
+			resAttrFieldValue, ok := rs.Resource().Attributes().Get(field)
+			if !ok {
+				continue
+			}
+
+			fn := fieldName(field)
+			fv := fieldValue(resAttrFieldValue.AsString())
+			if _, ok := currentBatch.fieldIndexes[fn]; !ok {
+				currentBatch.fieldIndexes[fn] = map[fieldValue]fieldS3Keys{}
+			}
+
+			// Append the S3 key to the field value index if it is not already present
+			if !slices.Contains(currentBatch.fieldIndexes[fn][fv], s3Key) {
+				currentBatch.fieldIndexes[fn][fv] = append(currentBatch.fieldIndexes[fn][fv], s3Key)
+			}
+		}
+
 		for j := 0; j < rs.ScopeSpans().Len(); j++ {
 			ss := rs.ScopeSpans().At(j)
 			for k := 0; k < ss.Spans().Len(); k++ {
@@ -315,6 +336,27 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 	// Extract and add field values to current batch
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
 		rl := logs.ResourceLogs().At(i)
+
+		// Some fields are Attributes of the Resource and are indexed automatically,
+		// so we add them to the indexed fields list if they are not already present
+		for _, field := range []string{"service.name", "session.id"} {
+			resAttrFieldValue, ok := rl.Resource().Attributes().Get(field)
+			if !ok {
+				continue
+			}
+
+			fn := fieldName(field)
+			fv := fieldValue(resAttrFieldValue.AsString())
+			if _, ok := currentBatch.fieldIndexes[fn]; !ok {
+				currentBatch.fieldIndexes[fn] = map[fieldValue]fieldS3Keys{}
+			}
+
+			// Append the S3 key to the field value index if it is not already present
+			if !slices.Contains(currentBatch.fieldIndexes[fn][fv], s3Key) {
+				currentBatch.fieldIndexes[fn][fv] = append(currentBatch.fieldIndexes[fn][fv], s3Key)
+			}
+		}
+
 		for j := 0; j < rl.ScopeLogs().Len(); j++ {
 			sl := rl.ScopeLogs().At(j)
 			for k := 0; k < sl.LogRecords().Len(); k++ {
