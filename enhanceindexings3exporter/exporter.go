@@ -68,7 +68,7 @@ func buildIndexesFromAttributes(currentBatch *MinuteIndexBatch, attrs pcommon.Ma
 		}
 
 		fn := fieldName(field)
-		// TODO: Is it ok that fieldValue is always effectively a string??
+		// TODO: Is it ok that fieldValue is always effectively a string?
 		fv := fieldValue(resAttrFieldValue.AsString())
 		if _, ok := currentBatch.fieldIndexes[fn]; !ok {
 			currentBatch.fieldIndexes[fn] = map[fieldValue]fieldS3Keys{}
