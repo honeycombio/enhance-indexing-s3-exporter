@@ -52,6 +52,8 @@ type enhanceIndexingS3Exporter struct {
 	indexManager *IndexManager
 }
 
+// These are the fields that are automatically indexed
+// Note that trace id is also automatically indexed but handled separately using different methods for traces and logs
 var automaticallyIndexedFields = []string{"service.name", "session.id"}
 
 // buildIndexesFromAttributes looks through the Attributes of Resources, Scopes, and LogRecords/Spans
