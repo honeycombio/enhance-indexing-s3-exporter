@@ -91,7 +91,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 
 // NewIndexManager creates a new IndexManager
 func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
-	// Some fields are indexed automatically, so we add them to the indexed fields list if they are not already present
+	// Add all automatically indexed fields to the index config's indexed fields list if they are not already present
 	if config.IndexConfig.Enabled {
 		for _, field := range getAutomaticallyIndexedFields() {
 			if !slices.Contains(config.IndexConfig.IndexedFields, fieldName(field)) {
@@ -280,13 +280,6 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	currentBatch := im.minuteIndexBatches[minute]
 	currentBatch.minuteDir = filepath.Dir(s3Key)
 
-	// Add all automatically indexed fields to the index config's indexed fields list if they are not already present
-	for _, field := range getAutomaticallyIndexedFields() {
-		if !slices.Contains(im.config.IndexConfig.IndexedFields, fieldName(field)) {
-			continue
-		}
-	}
-
 	// Extract and add field values to current batch
 	// The order of precedence is (with 1 being highest):
 	// 1. Item (span) attributes
@@ -340,13 +333,6 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 
 	currentBatch := im.minuteIndexBatches[minute]
 	currentBatch.minuteDir = filepath.Dir(s3Key)
-
-	// Add all automatically indexed fields to the index config's indexed fields list if they are not already present
-	for _, field := range getAutomaticallyIndexedFields() {
-		if !slices.Contains(im.config.IndexConfig.IndexedFields, fieldName(field)) {
-			continue
-		}
-	}
 
 	// Extract and add field values to current batch
 	// The order of precedence is (with 1 being highest):
