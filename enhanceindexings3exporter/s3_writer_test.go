@@ -176,7 +176,7 @@ func TestWriteBuffer(t *testing.T) {
 
 			// Additional checks based on test case
 			if tt.checkCustomPrefix {
-				assert.Contains(t, key, "custom-prefix_")
+				assert.NotContains(t, key, "custom-prefix_")
 			}
 			if tt.expectedPrefix != "" {
 				assert.Contains(t, key, tt.expectedPrefix)

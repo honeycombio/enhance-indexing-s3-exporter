@@ -243,6 +243,20 @@ func TestConfigValidation(t *testing.T) {
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot end with '/'",
 		},
+		{
+			name: "file_prefix is not supported",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+					FilePrefix:        "custom-prefix",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+			},
+			expectError: true,
+			errorMsg:    "file_prefix is not supported",
+		},
 	}
 
 	for _, tt := range tests {
