@@ -56,10 +56,12 @@ type enhanceIndexingS3Exporter struct {
 // Note that trace id is also automatically indexed but handled separately using different methods for traces and logs
 var automaticallyIndexedFields = []string{"service.name", "session.id"}
 
-// buildIndexesFromAttributes looks through the Attributes of Resources, Scopes, and LogRecords/Spans
-// and adds them to the indexed fields list if they are not already present
-// To ensure precedence is respected, the lowest precedence field value is returned
-// and then that value is passed in when evaluating the next Attribute type
+// buildIndexesFromAttributes looks through the Attributes of Resources, Scopes,
+// and LogRecords/Spans and adds them to the indexed fields list if they are not
+// already present. To ensure precedence is respected (Item > Scope > Resource),
+// the lower precedence field value is returned as Attributes are evaluated in
+// reverse precedence order, and that value is passed in when evaluating the
+// next Attribute type
 func buildIndexesFromAttributes(
 	currentBatch *MinuteIndexBatch,
 	attrs pcommon.Map,
@@ -83,7 +85,6 @@ func buildIndexesFromAttributes(
 
 		// Remove the S3 key from the previous field index's value if it is present
 		if _, ok := currentBatch.fieldIndexes[fn][previousFV]; ok && previousFV != "" {
-			fmt.Println("Removing S3 key from previous field index's value", s3Key, previousFV)
 			currentBatch.fieldIndexes[fn][previousFV] = slices.DeleteFunc(currentBatch.fieldIndexes[fn][previousFV], func(s string) bool {
 				return s == s3Key
 			})
