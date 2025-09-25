@@ -296,6 +296,10 @@ func TestAddTracesToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
 
+	// Check that attribute precedence is respected, Item > Scope > Resource
+	assert.NotContains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user456"))
+	assert.NotContains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user789"))
+
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 }
@@ -348,6 +352,10 @@ func TestAddLogsToIndex(t *testing.T) {
 	// Check configured field indexing
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust123")], s3Key)
+
+	// Check that attribute precedence is respected, Item > Scope > Resource
+	assert.NotContains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust456"))
+	assert.NotContains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust789"))
 
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
@@ -547,7 +555,11 @@ func createMockS3Writer(config *awss3exporter.S3UploaderConfig, marshaler awss3e
 func createTestTraces() ptrace.Traces {
 	traces := ptrace.NewTraces()
 	rs := traces.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("user.id", "user456")
+
 	ss := rs.ScopeSpans().AppendEmpty()
+	ss.Scope().Attributes().PutStr("user.id", "user789")
+
 	span := ss.Spans().AppendEmpty()
 
 	traceID := pcommon.TraceID([16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1})
@@ -564,7 +576,11 @@ func createTestTraces() ptrace.Traces {
 func createTestLogs() plog.Logs {
 	logs := plog.NewLogs()
 	rl := logs.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("customer.id", "cust456")
+
 	sl := rl.ScopeLogs().AppendEmpty()
+	sl.Scope().Attributes().PutStr("customer.id", "cust789")
+
 	lr := sl.LogRecords().AppendEmpty()
 
 	traceID := pcommon.TraceID([16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1})

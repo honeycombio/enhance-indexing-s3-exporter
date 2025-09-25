@@ -58,18 +58,39 @@ var automaticallyIndexedFields = []string{"service.name", "session.id"}
 
 // buildIndexesFromAttributes looks through the Attributes of Resources, Scopes, and LogRecords/Spans
 // and adds them to the indexed fields list if they are not already present
-func buildIndexesFromAttributes(currentBatch *MinuteIndexBatch, attrs pcommon.Map, indexedFields []fieldName, s3Key string) {
+// To ensure precedence is respected, the lowest precedence field value is returned
+// and then that value is passed in when evaluating the next Attribute type
+func buildIndexesFromAttributes(
+	currentBatch *MinuteIndexBatch,
+	attrs pcommon.Map,
+	indexedFields []fieldName,
+	s3Key string,
+	previousFV fieldValue,
+) fieldValue {
+	var fv fieldValue
+
 	for _, field := range indexedFields {
-		resAttrFieldValue, ok := attrs.Get(string(field))
+		attrFieldValue, ok := attrs.Get(string(field))
 		if !ok {
 			continue
 		}
 
 		fn := fieldName(field)
-		// TODO: Is it ok that fieldValue is always effectively a string?
-		fv := fieldValue(resAttrFieldValue.AsString())
+		fv = fieldValue(attrFieldValue.AsString())
 		if _, ok := currentBatch.fieldIndexes[fn]; !ok {
 			currentBatch.fieldIndexes[fn] = map[fieldValue]fieldS3Keys{}
+		}
+
+		// Remove the S3 key from the previous field index's value if it is present
+		if _, ok := currentBatch.fieldIndexes[fn][previousFV]; ok && previousFV != "" {
+			fmt.Println("Removing S3 key from previous field index's value", s3Key, previousFV)
+			currentBatch.fieldIndexes[fn][previousFV] = slices.DeleteFunc(currentBatch.fieldIndexes[fn][previousFV], func(s string) bool {
+				return s == s3Key
+			})
+
+			if len(currentBatch.fieldIndexes[fn][previousFV]) == 0 {
+				delete(currentBatch.fieldIndexes[fn], previousFV)
+			}
 		}
 
 		// Append the S3 key to the field value index if it is not already present
@@ -77,6 +98,8 @@ func buildIndexesFromAttributes(currentBatch *MinuteIndexBatch, attrs pcommon.Ma
 			currentBatch.fieldIndexes[fn][fv] = append(currentBatch.fieldIndexes[fn][fv], s3Key)
 		}
 	}
+
+	return fv
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
@@ -283,20 +306,22 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	// 1. Item (span) attributes
 	// 2. Instrumentation scope attributes
 	// 3. Resource attributes
+	var previousFV fieldValue = fieldValue("")
+
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rs := traces.ResourceSpans().At(i)
 		// Extract Resource attributes first
-		buildIndexesFromAttributes(currentBatch, rs.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+		previousFV = buildIndexesFromAttributes(currentBatch, rs.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 		for j := 0; j < rs.ScopeSpans().Len(); j++ {
 			ss := rs.ScopeSpans().At(j)
 			// Extract Instrumentation scope attributes next
-			buildIndexesFromAttributes(currentBatch, ss.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+			previousFV = buildIndexesFromAttributes(currentBatch, ss.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
 				// Extract span attributes last, at highest precedence
-				buildIndexesFromAttributes(currentBatch, span.Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+				_ = buildIndexesFromAttributes(currentBatch, span.Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 				// trace id is always indexed from ptrace.Span
 				traceID := span.TraceID().String()
@@ -338,20 +363,22 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 	// 1. Item (log record) attributes
 	// 2. Instrumentation scope attributes
 	// 3. Resource attributes
+	var previousFV fieldValue = fieldValue("")
+
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
 		rl := logs.ResourceLogs().At(i)
 		// Extract Resource attributes first
-		buildIndexesFromAttributes(currentBatch, rl.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+		previousFV = buildIndexesFromAttributes(currentBatch, rl.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 		for j := 0; j < rl.ScopeLogs().Len(); j++ {
 			sl := rl.ScopeLogs().At(j)
 			// Extract Instrumentation scope attributes next
-			buildIndexesFromAttributes(currentBatch, sl.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+			previousFV = buildIndexesFromAttributes(currentBatch, sl.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 			for k := 0; k < sl.LogRecords().Len(); k++ {
 				log := sl.LogRecords().At(k)
 				// Extract log record attributes last, at highest precedence
-				buildIndexesFromAttributes(currentBatch, log.Attributes(), im.config.IndexConfig.IndexedFields, s3Key)
+				_ = buildIndexesFromAttributes(currentBatch, log.Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
 
 				// trace id is always indexed from plog.LogRecord
 				traceID := log.TraceID().String()
