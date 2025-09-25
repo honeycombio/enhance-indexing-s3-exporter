@@ -52,11 +52,7 @@ type enhanceIndexingS3Exporter struct {
 	indexManager *IndexManager
 }
 
-// getAutomaticallyIndexedFields returns the fields that are automatically indexed
-// Note that trace id is automatically indexed but is extracted using different methods for traces and logs
-func getAutomaticallyIndexedFields() []string {
-	return []string{"service.name", "session.id"}
-}
+var automaticallyIndexedFields = []string{"service.name", "session.id"}
 
 // buildIndexesFromAttributes looks through the Attributes of Resources, Scopes, and LogRecords/Spans
 // and adds them to the indexed fields list if they are not already present
@@ -93,7 +89,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
 	// Add all automatically indexed fields to the index config's indexed fields list if they are not already present
 	if config.IndexConfig.Enabled {
-		for _, field := range getAutomaticallyIndexedFields() {
+		for _, field := range automaticallyIndexedFields {
 			if !slices.Contains(config.IndexConfig.IndexedFields, fieldName(field)) {
 				config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName(field))
 			}
