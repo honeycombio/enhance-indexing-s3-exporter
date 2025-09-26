@@ -8,7 +8,7 @@ This exporter extends the OpenTelemetry AWS S3 exporter with automatic field ind
 
 ```yaml
 exporters:
-  enhance_indexing_s3:
+   enhance_indexing_s3_exporter:
     # Standard OpenTelemetry exporter settings
     sending_queue: # Queue configuration
     timeout: # Timeout settings  
@@ -117,7 +117,7 @@ The exporter validates configuration with these rules:
 
 ```yaml
 exporters:
-  enhance_indexing_s3:
+  enhance_indexing_s3_exporter:
     s3uploader:
       region: "us-west-2"
       s3_bucket: "telemetry-data"
@@ -132,12 +132,16 @@ exporters:
 
 ```yaml
 exporters:
-  enhance_indexing_s3:
+  enhance_indexing_s3_exporter:
     # Queue and timeout settings
     sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 1000
+        batch:
+            flush_timeout: 30s
+            max_size: 50000
+            min_size: 50000
+        enabled: true
+        queue_size: 500000
+        sizer: items
     timeout: 30s
     retry_on_failure:
       enabled: true
@@ -170,10 +174,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [enhance_indexing_s3]
+      exporters: [enhance_indexing_s3_exporter]
     logs:
       receivers: [otlp]
-      exporters: [enhance_indexing_s3]
+      exporters: [enhance_indexing_s3_exporter]
 ```
 
 ### Local Development with MinIO
