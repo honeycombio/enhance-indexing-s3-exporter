@@ -29,17 +29,19 @@ exporters:
 
 ### S3 Uploader Configuration (`s3uploader`)
 
-| Name                      | Description                                                                                                                                                                                                                | Default                                     |
-|:--------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
-| `region`                  | AWS region (required)                                                                                                                                                                                                      | "us-east-1"                                 |
-| `s3_bucket`               | S3 bucket (required unless `endpoint` provided)                                                                                                                                                                           |                                             |
-| `s3_partition_format`     | Filepath formatting for partitioning; See [strftime](https://www.man7.org/linux/man-pages/man3/strftime.3.html) for format specification. Must contain year/month/day/hour/minute placeholders.                       | "year=%Y/month=%m/day=%d/hour=%H/minute=%M" |
-| `compression`             | File compression method: "gzip" or "none"                                                                                                                                                                                 | "gzip"                                      |
-| `retry_mode`              | Retry strategy: "standard" or "adaptive"                                                                                                                                                                                  | "standard"                                  |
-| `retry_max_attempts`      | Maximum retry attempts                                                                                                                                                                                                     | 3                                           |
-| `endpoint`                | Custom S3 endpoint (for S3-compatible services)                                                                                                                                                                           |                                             |
-| `s3_force_path_style`     | Force path-style S3 addressing                                                                                                                                                                                             | false                                       |
-| `disable_ssl`             | Disable SSL for S3 requests                                                                                                                                                                                               | false                                       |
+| Field | Description | Default |
+|-------|-------------|---------|
+| `region` | AWS region (required) | "us-east-1" |
+| `s3_bucket` | S3 bucket (required unless `endpoint` provided) | - |
+| `s3_partition_format` | Filepath partitioning format (see [strftime][1]). Must contain year/month/day/hour/minute placeholders. | "year=%Y/month=%m/day=%d/hour=%H/minute=%M" |
+| `compression` | File compression: "gzip" or "none" | "gzip" |
+| `retry_mode` | Retry strategy: "standard" or "adaptive" | "standard" |
+| `retry_max_attempts` | Maximum retry attempts | 3 |
+| `endpoint` | Custom S3 endpoint (for S3-compatible services) | - |
+| `s3_force_path_style` | Force path-style S3 addressing | false |
+| `disable_ssl` | Disable SSL for S3 requests | false |
+
+[1]: https://www.man7.org/linux/man-pages/man3/strftime.3.html
 
 **Note**: `file_prefix` is **not supported** and will cause validation to fail.
 
@@ -52,10 +54,10 @@ The `marshaler` field determines the data format written to S3:
 
 ### Index Configuration (`index`)
 
-| Name             | Description                                           | Default |
-|:-----------------|:-----------------------------------------------------|---------|
-| `enabled`        | Enable automatic field indexing                      | false   |
-| `indexed_fields` | Array of custom field names to index                 | []      |
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Enable automatic field indexing | false |
+| `indexed_fields` | Array of custom field names to index | [] |
 
 #### Automatically Indexed Fields
 
