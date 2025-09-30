@@ -188,7 +188,9 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
-	e.logger.Info("Starting enhance indexing S3 exporter", zap.String("region", e.config.S3Uploader.Region))
+	e.logger.Info("Starting enhance indexing S3 exporter",
+		zap.String("region", e.config.S3Uploader.Region),
+		zap.String("hostname", e.config.IndexConfig.Hostname))
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
@@ -469,14 +471,27 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 			return err
 		}
 
-		im.logger.Info("Uploaded index", zap.String("field", string(fName)), zap.String("key", indexKey), zap.String("format", string(im.config.MarshalerName)))
+		// Log usage information including hostname for usage endpoint tracking
+		logFields := []zap.Field{
+			zap.String("field", string(fName)),
+			zap.String("key", indexKey),
+			zap.String("format", string(im.config.MarshalerName)),
+		}
+		if im.config.IndexConfig.Hostname != "" {
+			logFields = append(logFields, zap.String("hostname", im.config.IndexConfig.Hostname))
+		}
+		im.logger.Info("Uploaded index", logFields...)
 	}
 
 	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	e.logger.Info("Consuming traces", zap.Int("spanCount", traces.SpanCount()))
+	logFields := []zap.Field{zap.Int("spanCount", traces.SpanCount())}
+	if e.config.IndexConfig.Hostname != "" {
+		logFields = append(logFields, zap.String("hostname", e.config.IndexConfig.Hostname))
+	}
+	e.logger.Info("Consuming traces", logFields...)
 
 	var marshaler ptrace.Marshaler
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
@@ -505,7 +520,11 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 }
 
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
-	e.logger.Info("Consuming logs", zap.Int("logRecordCount", logs.LogRecordCount()))
+	logFields := []zap.Field{zap.Int("logRecordCount", logs.LogRecordCount())}
+	if e.config.IndexConfig.Hostname != "" {
+		logFields = append(logFields, zap.String("hostname", e.config.IndexConfig.Hostname))
+	}
+	e.logger.Info("Consuming logs", logFields...)
 
 	// TODO: Add log fields to index
 
