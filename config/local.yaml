@@ -31,6 +31,7 @@ exporters:
     index:
       enabled: true
       indexed_fields: ['service.instance.id']
+      hostname: 'localhost'
 
 service:
   telemetry:

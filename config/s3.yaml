@@ -25,6 +25,7 @@ exporters:
     index:
       enabled: true
       indexed_fields: ['service.instance.id']
+      hostname: 'production-host.example.com'
 
 service:
   telemetry:
