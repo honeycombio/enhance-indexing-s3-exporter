@@ -107,6 +107,7 @@ func TestConfigValidation(t *testing.T) {
 				IndexConfig: IndexConfig{
 					Enabled:       true,
 					IndexedFields: []fieldName{"user.id", "service.name"},
+					Hostname:      "test-host.example.com",
 				},
 			},
 			expectError: false,
@@ -256,6 +257,67 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectError: true,
 			errorMsg:    "file_prefix is not supported",
+		},
+		{
+			name: "valid hostname",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Hostname: "example.com",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "valid hostname with IP address",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Hostname: "192.168.1.1",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "empty hostname is valid",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Hostname: "",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid hostname too long",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				IndexConfig: IndexConfig{
+					Hostname: "this-is-a-very-long-hostname-that-exceeds-the-maximum-allowed-length-for-a-hostname-which-is-253-characters-according-to-rfc-standards-and-should-therefore-fail-validation-when-we-test-it-in-our-configuration-validation-tests-to-ensure-that-our-hostname-validation-logic-is-working-correctly-and-properly-rejecting-hostnames-that-are-too-long",
+				},
+			},
+			expectError: true,
+			errorMsg:    "hostname is too long",
 		},
 	}
 
