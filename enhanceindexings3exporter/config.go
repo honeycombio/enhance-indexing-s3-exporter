@@ -2,6 +2,7 @@ package enhanceindexings3exporter
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
@@ -24,6 +25,7 @@ type Config struct {
 type IndexConfig struct {
 	Enabled       bool        `mapstructure:"enabled"`
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
+	Hostname      string      `mapstructure:"hostname"`
 }
 
 func (c *Config) Validate() error {
@@ -54,6 +56,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := validateHostname(c.IndexConfig.Hostname); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -74,6 +80,7 @@ func createDefaultConfig() component.Config {
 		IndexConfig: IndexConfig{
 			Enabled:       false,
 			IndexedFields: []fieldName{},
+			Hostname:      "",
 		},
 	}
 }
@@ -113,5 +120,24 @@ func validateS3PartitionFormat(format string) error {
 	if strings.HasSuffix(format, "/") {
 		return fmt.Errorf("S3PartitionFormat cannot end with '/'")
 	}
+	return nil
+}
+
+func validateHostname(hostname string) error {
+	if hostname == "" {
+		// Hostname is optional for now, so empty string is valid
+		return nil
+	}
+
+	// Check if it's a valid IP address
+	if net.ParseIP(hostname) != nil {
+		return nil
+	}
+
+	// Check if it's a valid hostname/FQDN
+	if len(hostname) > 253 {
+		return fmt.Errorf("hostname is too long: %s", hostname)
+	}
+
 	return nil
 }
