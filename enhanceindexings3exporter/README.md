@@ -58,6 +58,7 @@ The `marshaler` field determines the data format written to S3:
 |-------|-------------|---------|
 | `enabled` | Enable automatic field indexing | false |
 | `indexed_fields` | Array of custom field names to index | [] |
+| `hostname` | Hostname for usage endpoint tracking (optional) | "" |
 
 #### Automatically Indexed Fields
 
@@ -79,7 +80,15 @@ index:
     - "customer.id"
     - "environment" 
     - "version"
+  hostname: "production-server.example.com"
 ```
+
+#### Hostname Configuration
+
+TODO update when we implement metrics endpoint
+
+- **Valid formats**: Hostnames, FQDNs, or IP addresses
+- **Examples**: `"localhost"`, `"prod-server.example.com"`, `"192.168.1.100"`
 
 #### Field Value Precedence
 
