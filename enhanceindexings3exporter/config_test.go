@@ -25,10 +25,7 @@ func TestConfigMerging(t *testing.T) {
 			if exp == nil {
 				var err error
 				config := cfg.(*Config)
-				var indexManager *IndexManager
-				if config.IndexConfig.Enabled {
-					indexManager = NewIndexManager(config, set.Logger)
-				}
+				indexManager := NewIndexManager(config, set.Logger)
 				exp, err = newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 				if err != nil {
 					return nil, err
@@ -61,10 +58,17 @@ func TestConfigMerging(t *testing.T) {
 			ConfigProviderSettings: otelcol.ConfigProviderSettings{
 				ResolverSettings: confmap.ResolverSettings{
 					URIs: []string{
-						"yaml:exporters::test::index::enabled: true",
-						"yaml:exporters::test::index::indexed_fields: [abc]",
-
+						"yaml:exporters::test::api_key: test-api-key",
+						"yaml:exporters::test::indexed_fields: [abc]",
+						"yaml:exporters::test::api_url: https://localhost",
 						"yaml:exporters::test::s3uploader::s3_bucket: mybucket",
+						"yaml:exporters::test::s3uploader::s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+						"yaml:exporters::test::s3uploader::compression: gzip",
+						"yaml:exporters::test::s3uploader::retry_mode: standard",
+						"yaml:exporters::test::s3uploader::retry_max_attempts: 3",
+						"yaml:exporters::test::s3uploader::endpoint: http://localhost:9000",
+						"yaml:exporters::test::s3uploader::s3_force_path_style: true",
+						"yaml:exporters::test::s3uploader::disable_ssl: false",
 						"yaml:receivers::otlp::protocols::grpc::endpoint: 0.0.0.0:4317",
 						"yaml:service::pipelines::traces/objectstorage::receivers: [otlp]",
 						"yaml:service::pipelines::traces/objectstorage::exporters: [test]",
@@ -83,7 +87,7 @@ func TestConfigMerging(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NotNil(t, exp.config)
-		assert.Contains(t, exp.config.IndexConfig.IndexedFields, fieldName("session.id"))
+		assert.Contains(t, exp.config.IndexedFields, fieldName("session.id"))
 	})
 }
 
@@ -104,11 +108,8 @@ func TestConfigValidation(t *testing.T) {
 					Compression:       "gzip",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Enabled:       true,
-					IndexedFields: []fieldName{"user.id", "service.name"},
-					Hostname:      "test-host.example.com",
-				},
+				APIURL:        "test-host.example.com",
+				IndexedFields: []fieldName{"user.id", "service.name"},
 			},
 			expectError: false,
 		},
@@ -121,9 +122,6 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpJSON,
-				IndexConfig: IndexConfig{
-					Enabled: false,
-				},
 			},
 			expectError: false,
 		},
@@ -267,9 +265,7 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Hostname: "example.com",
-				},
+				APIURL:        "example.com",
 			},
 			expectError: false,
 		},
@@ -282,9 +278,7 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Hostname: "192.168.1.1",
-				},
+				APIURL:        "192.168.1.1",
 			},
 			expectError: false,
 		},
@@ -297,9 +291,7 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Hostname: "",
-				},
+				APIURL:        "",
 			},
 			expectError: false,
 		},
@@ -312,9 +304,7 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Hostname: "this-is-a-very-long-hostname-that-exceeds-the-maximum-allowed-length-for-a-hostname-which-is-253-characters-according-to-rfc-standards-and-should-therefore-fail-validation-when-we-test-it-in-our-configuration-validation-tests-to-ensure-that-our-hostname-validation-logic-is-working-correctly-and-properly-rejecting-hostnames-that-are-too-long",
-				},
+				APIURL:        "this-is-a-very-long-hostname-that-exceeds-the-maximum-allowed-length-for-a-hostname-which-is-253-characters-according-to-rfc-standards-and-should-therefore-fail-validation-when-we-test-it-in-our-configuration-validation-tests-to-ensure-that-our-hostname-validation-logic-is-working-correctly-and-properly-rejecting-hostnames-that-are-too-long",
 			},
 			expectError: true,
 			errorMsg:    "hostname is too long",

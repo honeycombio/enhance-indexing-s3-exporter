@@ -7,6 +7,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -18,17 +19,21 @@ type Config struct {
 	S3Uploader       awss3exporter.S3UploaderConfig  `mapstructure:"s3uploader"`
 	MarshalerName    awss3exporter.MarshalerType     `mapstructure:"marshaler"`
 
-	// Index configuration
-	IndexConfig IndexConfig `mapstructure:"index"`
-}
+	// APIKey is the Management API Key associated with the Honeycomb account.
+	APIKey configopaque.String `mapstructure:"api_key"`
 
-type IndexConfig struct {
-	Enabled       bool        `mapstructure:"enabled"`
+	// API URL to use (defaults to https://api.honeycomb.io).
+	APIURL string `mapstructure:"api_url"`
+
+	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
-	Hostname      string      `mapstructure:"hostname"`
 }
 
 func (c *Config) Validate() error {
+	if err := validateHostname(c.APIURL); err != nil {
+		return err
+	}
+
 	if c.S3Uploader.Region == "" {
 		return fmt.Errorf("region is required")
 	}
@@ -56,10 +61,6 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := validateHostname(c.IndexConfig.Hostname); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -77,11 +78,9 @@ func createDefaultConfig() component.Config {
 			RetryMode:         "standard",
 		},
 		MarshalerName: awss3exporter.OtlpProtobuf,
-		IndexConfig: IndexConfig{
-			Enabled:       false,
-			IndexedFields: []fieldName{},
-			Hostname:      "",
-		},
+		APIURL:        "https://api.honeycomb.io",
+		APIKey:        configopaque.String(""),
+		IndexedFields: []fieldName{},
 	}
 }
 

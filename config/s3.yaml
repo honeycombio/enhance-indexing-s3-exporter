@@ -8,6 +8,8 @@ exporters:
   debug:
     #verbosity: detailed
   enhance_indexing_s3_exporter:
+    api_key: 'test-api-key'
+    api_url: 'https://localhost'
     marshaler: otlp_proto
     s3uploader:
       region: 'us-east-1'
@@ -22,10 +24,7 @@ exporters:
         queue_size: 500000
         sizer: items
     timeout: 30s
-    index:
-      enabled: true
-      indexed_fields: ['service.instance.id']
-      hostname: 'production-host.example.com'
+    indexed_fields: ['service.instance.id']
 
 service:
   telemetry:

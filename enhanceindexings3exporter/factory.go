@@ -59,10 +59,7 @@ func createTracesExporter(
 
 	set.Logger.Info("Creating traces exporter", zap.String("componentID", set.ID.String()))
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = getOrCreateIndexManager(set.ID, config, set.Logger)
-	}
+	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
 	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 	if err != nil {
@@ -91,10 +88,7 @@ func createLogsExporter(
 
 	set.Logger.Info("Creating logs exporter", zap.String("componentID", set.ID.String()))
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = getOrCreateIndexManager(set.ID, config, set.Logger)
-	}
+	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
 	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
 	if err != nil {
