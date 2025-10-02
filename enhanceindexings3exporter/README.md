@@ -24,7 +24,8 @@ exporters:
     
     # Data marshaling format (required) 
     marshaler: "otlp_protobuf"  # or "otlp_json"
-    
+   
+    # Index additional fields
     indexed_fields: ["user.id", "customer.id"]
 ```
 
@@ -87,9 +88,9 @@ exporters:
 ```
 
 **Note**: If the `indexed_fields` field is defined in this exporter component,
-*these values will take precedence over the indexes specified for
-the Enhance configuration of the Honeycomb Team. When `indexed_fields` is empty,
-the indexer will retrieve the list of indexed fields from the Honeycomb Team's
+these values will take precedence over the indexes specified for the Enhance
+configuration of the Honeycomb Team. When `indexed_fields` is empty, the indexer
+will retrieve the list of indexed fields from the Honeycomb Team's
 configuration.
 
 #### Field Value Precedence
