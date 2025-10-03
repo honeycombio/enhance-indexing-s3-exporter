@@ -14,8 +14,8 @@ exporters:
     timeout: # Timeout settings  
     retry_on_failure: # Retry configuration
    
-     # Honeycomb API Key configuration
-    api_key: {{env:HONEYCOMB_API_KEY}}
+    # Honeycomb API Key configuration
+    api_key: ${env:HONEYCOMB_API_KEY}
     api_url: https://api.honeycomb.io  
 
     # S3 uploader configuration (required)
@@ -159,7 +159,11 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
-    
+   
+    # Honeycomb API Key configuration
+    api_key: ${env:HONEYCOMB_API_KEY}
+    api_url: https://api.honeycomb.io  
+
     # S3 configuration
     s3uploader:
       region: "us-west-2"
