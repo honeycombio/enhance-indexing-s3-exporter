@@ -138,8 +138,6 @@ exporters:
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       compression: "gzip"
     marshaler: "otlp_protobuf"
-    index:
-      enabled: false
 ```
 
 ### Configuration with Indexing
@@ -147,7 +145,7 @@ exporters:
 ```yaml
 exporters:
   enhance_indexing_s3_exporter:
-    # Queue and timeout settings
+    # Queue, timeout, and retry settings
     sending_queue:
         batch:
             flush_timeout: 30s
@@ -175,13 +173,13 @@ exporters:
     marshaler: "otlp_protobuf"
     
     # Field indexing
-    index:
-      enabled: true
-      indexed_fields:
-        - "user.id"
-        - "customer.id"
-        - "environment"
-        - "deployment.version"
+    indexed_fields:
+      - "user.id"
+      - "customer.id"
+      - "environment"
+      - "deployment.version"
+    # Can also one-line the index list
+    # indexed_fields: ["user.id", "customer.id", "environment", "deployment.version"]
 
 # Pipeline configuration
 service:
