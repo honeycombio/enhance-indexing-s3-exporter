@@ -11,6 +11,8 @@ exporters:
   debug:
     #verbosity: detailed
   enhance_indexing_s3_exporter:
+    api_key: 'test-api-key'
+    api_url: 'https://localhost'
     marshaler: otlp_proto
     s3uploader:
       endpoint: 'http://minio:9000/'
@@ -28,10 +30,7 @@ exporters:
         queue_size: 500000
         sizer: items
     timeout: 30s
-    index:
-      enabled: true
-      indexed_fields: ['service.instance.id']
-      hostname: 'localhost'
+    indexed_fields: ['service.instance.id']
 
 service:
   telemetry:

@@ -115,11 +115,9 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 // NewIndexManager creates a new IndexManager
 func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
 	// Add all automatically indexed fields to the index config's indexed fields list if they are not already present
-	if config.IndexConfig.Enabled {
-		for _, field := range automaticallyIndexedFields {
-			if !slices.Contains(config.IndexConfig.IndexedFields, fieldName(field)) {
-				config.IndexConfig.IndexedFields = append(config.IndexConfig.IndexedFields, fieldName(field))
-			}
+	for _, field := range automaticallyIndexedFields {
+		if !slices.Contains(config.IndexedFields, fieldName(field)) {
+			config.IndexedFields = append(config.IndexedFields, fieldName(field))
 		}
 	}
 
@@ -190,7 +188,7 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
-		zap.String("hostname", e.config.IndexConfig.Hostname))
+		zap.String("api_url", e.config.APIURL))
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
@@ -214,7 +212,7 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+	if e.indexManager != nil {
 		err := e.indexManager.start(ctx, e.s3Writer)
 		if err != nil {
 			e.logger.Error("Failed to start index manager", zap.Error(err))
@@ -226,7 +224,7 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
-	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+	if e.indexManager != nil {
 		err := e.indexManager.shutdown(ctx)
 		if err != nil {
 			e.logger.Error("Failed to shutdown index manager", zap.Error(err))
@@ -315,17 +313,17 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rs := traces.ResourceSpans().At(i)
 		// Extract Resource attributes first
-		previousFV = buildIndexesFromAttributes(currentBatch, rs.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+		previousFV = buildIndexesFromAttributes(currentBatch, rs.Resource().Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 		for j := 0; j < rs.ScopeSpans().Len(); j++ {
 			ss := rs.ScopeSpans().At(j)
 			// Extract Instrumentation scope attributes next
-			previousFV = buildIndexesFromAttributes(currentBatch, ss.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+			previousFV = buildIndexesFromAttributes(currentBatch, ss.Scope().Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
 				// Extract span attributes last, at highest precedence
-				_ = buildIndexesFromAttributes(currentBatch, span.Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+				_ = buildIndexesFromAttributes(currentBatch, span.Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 				// trace id is always indexed from ptrace.Span
 				traceID := span.TraceID().String()
@@ -372,17 +370,17 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
 		rl := logs.ResourceLogs().At(i)
 		// Extract Resource attributes first
-		previousFV = buildIndexesFromAttributes(currentBatch, rl.Resource().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+		previousFV = buildIndexesFromAttributes(currentBatch, rl.Resource().Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 		for j := 0; j < rl.ScopeLogs().Len(); j++ {
 			sl := rl.ScopeLogs().At(j)
 			// Extract Instrumentation scope attributes next
-			previousFV = buildIndexesFromAttributes(currentBatch, sl.Scope().Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+			previousFV = buildIndexesFromAttributes(currentBatch, sl.Scope().Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 			for k := 0; k < sl.LogRecords().Len(); k++ {
 				log := sl.LogRecords().At(k)
 				// Extract log record attributes last, at highest precedence
-				_ = buildIndexesFromAttributes(currentBatch, log.Attributes(), im.config.IndexConfig.IndexedFields, s3Key, previousFV)
+				_ = buildIndexesFromAttributes(currentBatch, log.Attributes(), im.config.IndexedFields, s3Key, previousFV)
 
 				// trace id is always indexed from plog.LogRecord
 				traceID := log.TraceID().String()
@@ -477,8 +475,8 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 			zap.String("key", indexKey),
 			zap.String("format", string(im.config.MarshalerName)),
 		}
-		if im.config.IndexConfig.Hostname != "" {
-			logFields = append(logFields, zap.String("hostname", im.config.IndexConfig.Hostname))
+		if im.config.APIURL != "" {
+			logFields = append(logFields, zap.String("api_url", im.config.APIURL))
 		}
 		im.logger.Info("Uploaded index", logFields...)
 	}
@@ -488,8 +486,8 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	logFields := []zap.Field{zap.Int("spanCount", traces.SpanCount())}
-	if e.config.IndexConfig.Hostname != "" {
-		logFields = append(logFields, zap.String("hostname", e.config.IndexConfig.Hostname))
+	if e.config.APIURL != "" {
+		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
 	}
 	e.logger.Info("Consuming traces", logFields...)
 
@@ -512,7 +510,7 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 
 	// Add to index batch if enabled
-	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+	if e.indexManager != nil {
 		e.indexManager.addTracesToIndex(traces, s3Key, minute)
 	}
 
@@ -521,8 +519,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 	logFields := []zap.Field{zap.Int("logRecordCount", logs.LogRecordCount())}
-	if e.config.IndexConfig.Hostname != "" {
-		logFields = append(logFields, zap.String("hostname", e.config.IndexConfig.Hostname))
+	if e.config.APIURL != "" {
+		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
 	}
 	e.logger.Info("Consuming logs", logFields...)
 
@@ -547,7 +545,7 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 
 	// Add to index batch if enabled
-	if e.config.IndexConfig.Enabled && e.indexManager != nil {
+	if e.indexManager != nil {
 		e.indexManager.addLogsToIndex(logs, s3Key, minute)
 	}
 

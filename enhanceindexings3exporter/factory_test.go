@@ -14,11 +14,7 @@ func TestGetOrCreateIndexManagerConcurrency(t *testing.T) {
 	indexManagers = nil
 	indexManagersOnce = sync.Once{}
 
-	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled: true,
-		},
-	}
+	config := &Config{}
 	logger := zap.NewNop()
 
 	// Test concurrent access to getOrCreateIndexManager
@@ -72,11 +68,7 @@ func TestGetOrCreateIndexManagerDifferentIDs(t *testing.T) {
 	indexManagers = nil
 	indexManagersOnce = sync.Once{}
 
-	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled: true,
-		},
-	}
+	config := &Config{}
 	logger := zap.NewNop()
 
 	// Test that different component IDs get different managers
@@ -102,11 +94,7 @@ func TestIndexManagersInitializationRace(t *testing.T) {
 	indexManagers = nil
 	indexManagersOnce = sync.Once{}
 
-	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled: true,
-		},
-	}
+	config := &Config{}
 	logger := zap.NewNop()
 
 	// Test that multiple goroutines can safely initialize the map

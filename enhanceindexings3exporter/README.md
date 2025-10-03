@@ -13,19 +13,35 @@ exporters:
     sending_queue: # Queue configuration
     timeout: # Timeout settings  
     retry_on_failure: # Retry configuration
-    
+   
+    # Honeycomb API Key configuration
+    api_key: ${env:HONEYCOMB_API_KEY}
+    api_url: https://api.honeycomb.io  
+
     # S3 uploader configuration (required)
     s3uploader:
       # ... S3 settings
     
     # Data marshaling format (required) 
     marshaler: "otlp_protobuf"  # or "otlp_json"
-    
-    # Index configuration (optional)
-    index:
-      enabled: true
-      indexed_fields: ["user.id", "customer.id"]
+   
+    # Index additional fields
+    indexed_fields: ["user.id", "customer.id"]
 ```
+
+### Honeycomb API Configuration
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `api_key` | This is a Management API key for your Honeycomb account (optional) | - |
+| `api_url` | API URL endpoint for usage tracking (optional) | "https://api.honeycomb.io/" |
+
+#### API URL Configuration
+
+TODO update when we implement metrics endpoint
+
+- **Valid formats**: Hostnames, FQDNs, or IP addresses
+- **Examples**: `"localhost"`, `"prod-server.example.com"`, `"192.168.1.100"`
 
 ### S3 Uploader Configuration (`s3uploader`)
 
@@ -52,17 +68,9 @@ The `marshaler` field determines the data format written to S3:
 - **`otlp_protobuf`** (default): OpenTelemetry Protocol as Protocol Buffers - more efficient, smaller files
 - **`otlp_json`**: OpenTelemetry Protocol as JSON - human-readable format
 
-### Index Configuration (`index`)
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `enabled` | Enable automatic field indexing | false |
-| `indexed_fields` | Array of custom field names to index | [] |
-| `hostname` | Hostname for usage endpoint tracking (optional) | "" |
-
 #### Automatically Indexed Fields
 
-When indexing is enabled (`index.enabled: true`), these fields are **automatically indexed**:
+When using this component, these fields are **automatically indexed**:
 
 - **`trace.trace_id`**: Trace identifier (from span/log trace ID)
 - **`service.name`**: Service name (from resource/scope/item attributes)  
@@ -70,25 +78,20 @@ When indexing is enabled (`index.enabled: true`), these fields are **automatical
 
 #### Custom Indexed Fields
 
-Additional fields can be configured for indexing:
+The `indexed_fields` field can be configured to specify a list of additional fields to have indexed:
 
 ```yaml
-index:
-  enabled: true
-  indexed_fields:
-    - "user.id"
-    - "customer.id"
-    - "environment" 
-    - "version"
-  hostname: "production-server.example.com"
+exporters:
+  enhance_indexing_s3_exporter:
+  [...]
+    indexed_fields: ["user.id", "customer.id", "environment", "version"]
 ```
 
-#### Hostname Configuration
-
-TODO update when we implement metrics endpoint
-
-- **Valid formats**: Hostnames, FQDNs, or IP addresses
-- **Examples**: `"localhost"`, `"prod-server.example.com"`, `"192.168.1.100"`
+**Note**: If the `indexed_fields` field is defined in this exporter component,
+these values will take precedence over the indexes specified for the Enhance
+configuration of the Honeycomb Team. When `indexed_fields` is empty, the indexer
+will retrieve the list of indexed fields from the Honeycomb Team's
+configuration.
 
 #### Field Value Precedence
 
@@ -135,8 +138,6 @@ exporters:
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       compression: "gzip"
     marshaler: "otlp_protobuf"
-    index:
-      enabled: false
 ```
 
 ### Configuration with Indexing
@@ -144,7 +145,7 @@ exporters:
 ```yaml
 exporters:
   enhance_indexing_s3_exporter:
-    # Queue and timeout settings
+    # Queue, timeout, and retry settings
     sending_queue:
         batch:
             flush_timeout: 30s
@@ -158,7 +159,11 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
-    
+   
+    # Honeycomb API Key configuration
+    api_key: ${env:HONEYCOMB_API_KEY}
+    api_url: https://api.honeycomb.io  
+
     # S3 configuration
     s3uploader:
       region: "us-west-2"
@@ -172,13 +177,13 @@ exporters:
     marshaler: "otlp_protobuf"
     
     # Field indexing
-    index:
-      enabled: true
-      indexed_fields:
-        - "user.id"
-        - "customer.id"
-        - "environment"
-        - "deployment.version"
+    indexed_fields:
+      - "user.id"
+      - "customer.id"
+      - "environment"
+      - "deployment.version"
+    # Can also one-line the index list
+    # indexed_fields: ["user.id", "customer.id", "environment", "deployment.version"]
 
 # Pipeline configuration
 service:

@@ -48,51 +48,28 @@ func (m *mockS3Uploader) Upload(ctx context.Context, input *s3.PutObjectInput, o
 
 func TestConsumeTraces(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *Config
-		traces         ptrace.Traces
-		expectIndexing bool
+		name   string
+		config *Config
+		traces ptrace.Traces
 	}{
 		{
-			name: "traces with indexing disabled",
+			name: "traces with indexing",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:   "us-east-1",
 					S3Bucket: "test-bucket",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Enabled: false,
-				},
+				IndexedFields: []fieldName{"user.id"},
 			},
-			traces:         createTestTraces(),
-			expectIndexing: false,
-		},
-		{
-			name: "traces with indexing enabled",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:   "us-east-1",
-					S3Bucket: "test-bucket",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Enabled:       true,
-					IndexedFields: []fieldName{"user.id"},
-				},
-			},
-			traces:         createTestTraces(),
-			expectIndexing: true,
+			traces: createTestTraces(),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := zap.NewNop()
-			var indexManager *IndexManager
-			if tt.config.IndexConfig.Enabled {
-				indexManager = NewIndexManager(tt.config, logger)
-			}
+			indexManager := NewIndexManager(tt.config, logger)
 			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger, indexManager)
 			require.NoError(t, err)
 
@@ -103,15 +80,12 @@ func TestConsumeTraces(t *testing.T) {
 				exporter.indexManager.s3Writer = mockWriter
 			}
 			mockUploader := mockWriter.uploader.(*mockS3Uploader)
-			// Initialize index batches if indexing is enabled
-			if tt.config.IndexConfig.Enabled {
-				// Get the current minute to match what WriteBuffer will return
-				currentMinute := time.Now().UTC().Minute()
-				exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
-					currentMinute: {
-						fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
-					},
-				}
+			// Get the current minute to match what WriteBuffer will return
+			currentMinute := time.Now().UTC().Minute()
+			exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
+				currentMinute: {
+					fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+				},
 			}
 
 			ctx := context.Background()
@@ -122,23 +96,22 @@ func TestConsumeTraces(t *testing.T) {
 			assert.Len(t, mockUploader.uploadCalls, 1)
 			assert.Contains(t, *mockUploader.uploadCalls[0].input.Key, "traces_")
 
-			if tt.expectIndexing {
-				// Check that index was updated
-				currentMinute := time.Now().UTC().Minute()
-				batch := exporter.indexManager.minuteIndexBatches[currentMinute]
-				assert.NotNil(t, batch)
+			// Check that index was updated
+			currentMinute = time.Now().UTC().Minute()
+			batch := exporter.indexManager.minuteIndexBatches[currentMinute]
+			assert.NotNil(t, batch)
 
-				// Check that trace.trace_id and session.id are indexed automatically
-				assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
-				assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
-				assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
+			// Check that trace.trace_id and session.id are indexed automatically
+			assert.Contains(t, batch.fieldIndexes[fieldName("trace.trace_id")], fieldValue("00000000000000000000000000000001"))
+			assert.Contains(t, batch.fieldIndexes[fieldName("session.id")], fieldValue("12345"))
+			assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 
-				// Check that configured fields are indexed
-				assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
+			// Check that configured fields are indexed
+			assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 
-				// Check that non-configured fields are not indexed
-				assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
-			}
+			// Check that non-configured fields are not indexed
+			assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
+
 			// Clean up after checking
 			err = exporter.shutdown(ctx)
 			require.NoError(t, err)
@@ -154,32 +127,14 @@ func TestConsumeLogs(t *testing.T) {
 		expectIndexing bool
 	}{
 		{
-			name: "logs with indexing disabled",
+			name: "logs with indexing",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:   "us-east-1",
 					S3Bucket: "test-bucket",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Enabled: false,
-				},
-			},
-			logs:           createTestLogs(),
-			expectIndexing: false,
-		},
-		{
-			name: "logs with indexing enabled",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:   "us-east-1",
-					S3Bucket: "test-bucket",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				IndexConfig: IndexConfig{
-					Enabled:       true,
-					IndexedFields: []fieldName{"customer.id"},
-				},
+				IndexedFields: []fieldName{"customer.id"},
 			},
 			logs:           createTestLogs(),
 			expectIndexing: true,
@@ -189,10 +144,7 @@ func TestConsumeLogs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := zap.NewNop()
-			var indexManager *IndexManager
-			if tt.config.IndexConfig.Enabled {
-				indexManager = NewIndexManager(tt.config, logger)
-			}
+			indexManager := NewIndexManager(tt.config, logger)
 			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger, indexManager)
 			require.NoError(t, err)
 
@@ -203,15 +155,12 @@ func TestConsumeLogs(t *testing.T) {
 				exporter.indexManager.s3Writer = mockWriter
 			}
 			mockUploader := mockWriter.uploader.(*mockS3Uploader)
-			// Initialize index batches if indexing is enabled
-			if tt.config.IndexConfig.Enabled {
-				// Get the current minute to match what WriteBuffer will return
-				currentMinute := time.Now().UTC().Minute()
-				exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
-					currentMinute: {
-						fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
-					},
-				}
+			// Get the current minute to match what WriteBuffer will return
+			currentMinute := time.Now().UTC().Minute()
+			exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
+				currentMinute: {
+					fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
+				},
 			}
 
 			ctx := context.Background()
@@ -249,16 +198,10 @@ func TestConsumeLogs(t *testing.T) {
 func TestAddTracesToIndex(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled:       true,
-			IndexedFields: []fieldName{"user.id"},
-		},
+		IndexedFields: []fieldName{"user.id"},
 	}
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = NewIndexManager(config, logger)
-	}
+	indexManager := NewIndexManager(config, logger)
 	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
@@ -307,16 +250,10 @@ func TestAddTracesToIndex(t *testing.T) {
 func TestAddLogsToIndex(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled:       true,
-			IndexedFields: []fieldName{"customer.id"},
-		},
+		IndexedFields: []fieldName{"customer.id"},
 	}
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = NewIndexManager(config, logger)
-	}
+	indexManager := NewIndexManager(config, logger)
 	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
@@ -397,15 +334,9 @@ func TestMarshalIndex(t *testing.T) {
 			logger := zap.NewNop()
 			config := &Config{
 				MarshalerName: tt.marshalerName,
-				IndexConfig: IndexConfig{
-					Enabled: true,
-				},
 			}
 
-			var indexManager *IndexManager
-			if config.IndexConfig.Enabled {
-				indexManager = NewIndexManager(config, logger)
-			}
+			indexManager := NewIndexManager(config, logger)
 			exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 			require.NoError(t, err)
 
@@ -441,15 +372,9 @@ func TestUploadBatch(t *testing.T) {
 		S3Uploader: awss3exporter.S3UploaderConfig{
 			Compression: "gzip",
 		},
-		IndexConfig: IndexConfig{
-			Enabled: true,
-		},
 	}
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = NewIndexManager(config, logger)
-	}
+	indexManager := NewIndexManager(config, logger)
 	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
@@ -496,16 +421,10 @@ func TestUploadBatch(t *testing.T) {
 func TestRolloverIndexes(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{
-		IndexConfig: IndexConfig{
-			Enabled:       true,
-			IndexedFields: []fieldName{"user.id"},
-		},
+		IndexedFields: []fieldName{"user.id"},
 	}
 
-	var indexManager *IndexManager
-	if config.IndexConfig.Enabled {
-		indexManager = NewIndexManager(config, logger)
-	}
+	indexManager := NewIndexManager(config, logger)
 	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
 	require.NoError(t, err)
 
