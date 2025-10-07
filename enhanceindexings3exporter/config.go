@@ -42,6 +42,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := validateManagementKey(c.APIURL, string(c.APIKey), c); err != nil {
+		return err
+	}
+
 	if c.S3Uploader.Region == "" {
 		return fmt.Errorf("region is required")
 	}
@@ -66,10 +70,6 @@ func (c *Config) Validate() error {
 	}
 
 	if err := validateS3PartitionFormat(c.S3Uploader.S3PartitionFormat); err != nil {
-		return err
-	}
-
-	if err := validateManagementKey(c.APIURL, string(c.APIKey), c); err != nil {
 		return err
 	}
 
@@ -143,10 +143,6 @@ func validateS3PartitionFormat(format string) error {
 }
 
 func validateHostname(hostname string) error {
-	if hostname == "" {
-		// Hostname is optional for now, so empty string is valid
-		return nil
-	}
 
 	if !strings.HasPrefix(hostname, "http://") && !strings.HasPrefix(hostname, "https://") {
 		return fmt.Errorf("hostname must start with 'http://' or 'https://', got: %s", hostname)

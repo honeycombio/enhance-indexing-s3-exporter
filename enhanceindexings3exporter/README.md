@@ -33,8 +33,8 @@ exporters:
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `api_key` | This is a Management API key for your Honeycomb account (optional) | - |
-| `api_url` | API URL endpoint for usage tracking (optional) | "https://api.honeycomb.io/" |
+| `api_key` | This is a Management API key for your Honeycomb account | - |
+| `api_url` | API URL endpoint for usage tracking | "https://api.honeycomb.io/" |
 
 #### API URL Configuration
 
