@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/exporter"
@@ -308,6 +309,104 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectError: true,
 			errorMsg:    "hostname is too long",
+		},
+		{
+			name: "hostname missing protocol scheme",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIURL:        "api.example.com",
+			},
+			expectError: true,
+			errorMsg:    "hostname must start with 'http://' or 'https://'",
+		},
+		{
+			name: "valid hostname with https",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIURL:        "https://api.example.com",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid hostname with http",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIURL:        "http://localhost:8086",
+			},
+			expectError: false,
+		},
+		{
+			name: "management key without api_url",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String("test-api-key"),
+				APIURL:        "",
+			},
+			expectError: true,
+			errorMsg:    "both api_url and management_key must be provided together",
+		},
+		{
+			name: "api_url without management key",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String(""),
+				APIURL:        "https://api.example.com",
+			},
+			expectError: true,
+			errorMsg:    "both api_url and management_key must be provided together",
+		},
+		{
+			name: "valid management key and api_url for local development",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String("test-api-key"),
+				APIURL:        "http://localhost:8086",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid management key and api_url for production",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String("hcxmk_01234567890abcdef:secret123"),
+				APIURL:        "https://api.honeycomb.io",
+			},
+			expectError: false,
 		},
 	}
 

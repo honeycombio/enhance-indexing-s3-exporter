@@ -1,9 +1,14 @@
 package enhanceindexings3exporter
 
 import (
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
@@ -24,6 +29,9 @@ type Config struct {
 
 	// API URL to use (defaults to https://api.honeycomb.io).
 	APIURL string `mapstructure:"api_url"`
+
+	// TeamHCID is extracted from the API response during validation
+	TeamHCID string
 
 	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
@@ -61,6 +69,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := validateManagementKey(c.APIURL, string(c.APIKey), c); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -82,6 +94,14 @@ func createDefaultConfig() component.Config {
 		APIKey:        configopaque.String(""),
 		IndexedFields: []fieldName{},
 	}
+}
+
+func isLocalAPIURL(apiURL string) bool {
+	return strings.Contains(apiURL, "localhost") || strings.Contains(apiURL, "127.0.0.1") || strings.Contains(apiURL, "minio") || strings.Contains(apiURL, "0.0.0.0")
+}
+
+func extractTeamHCID(authResp map[string]any) string {
+	return authResp["data"].(map[string]any)["relationships"].(map[string]any)["team"].(map[string]any)["data"].(map[string]any)["id"].(string)
 }
 
 func validateS3PartitionFormat(format string) error {
@@ -128,6 +148,10 @@ func validateHostname(hostname string) error {
 		return nil
 	}
 
+	if !strings.HasPrefix(hostname, "http://") && !strings.HasPrefix(hostname, "https://") {
+		return fmt.Errorf("hostname must start with 'http://' or 'https://', got: %s", hostname)
+	}
+
 	// Check if it's a valid IP address
 	if net.ParseIP(hostname) != nil {
 		return nil
@@ -139,4 +163,76 @@ func validateHostname(hostname string) error {
 	}
 
 	return nil
+}
+
+func validateManagementKey(apiURL string, managementKey string, config *Config) error {
+
+	if (apiURL == "" && managementKey != "") || (apiURL != "" && managementKey == "") {
+		return fmt.Errorf("both api_url and management_key must be provided together")
+	}
+
+	// Skip API validation for local development
+	if isLocalAPIURL(apiURL) {
+		fmt.Printf("Skipping API validation for local URL: %s\n", apiURL)
+		config.TeamHCID = "local-dev-team" // Set a placeholder team ID for local development
+		return nil
+	}
+
+	// Construct the auth endpoint URL
+	authURL := fmt.Sprintf("%s/2/auth", apiURL)
+	// Determine if we are using local config by checking for common local endpoints
+	isLocalConfig := isLocalAPIURL(apiURL)
+
+	// Create HTTP client with timeout and skip TLS verification only for local config
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	if isLocalConfig {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+	}
+
+	// Create request
+	req, err := http.NewRequest("GET", authURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create auth request: %w", err)
+	}
+
+	// Set authorization header
+	req.Header.Set("Authorization", "Bearer "+managementKey)
+
+	// Make the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to validate management API key: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// API key is valid, parse the response to get team ID
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response body: %w", err)
+		}
+
+		var authResp map[string]any
+		if err := json.Unmarshal(body, &authResp); err != nil {
+			return fmt.Errorf("failed to parse auth response: %w", err)
+		}
+
+		// Store the team HCID in the config
+		config.TeamHCID = extractTeamHCID(authResp)
+		fmt.Printf("Team HCID extracted and stored: %s\n", config.TeamHCID)
+
+		return nil
+	case http.StatusUnauthorized:
+		return fmt.Errorf("invalid management API key")
+	case http.StatusForbidden:
+		return fmt.Errorf("management API key does not have required permissions")
+	default:
+		return fmt.Errorf("unexpected response from auth API: %d", resp.StatusCode)
+	}
 }
