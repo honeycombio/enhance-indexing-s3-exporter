@@ -12,6 +12,8 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/metric"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -44,6 +46,104 @@ func (m *mockS3Uploader) Upload(ctx context.Context, input *s3.PutObjectInput, o
 	}
 
 	return &manager.UploadOutput{}, nil
+}
+
+func TestExporterMetrics(t *testing.T) {
+	ctx := context.Background()
+	logger := zap.NewNop()
+
+	// Set up OpenTelemetry metrics provider for testing
+	meterProvider := metric.NewMeterProvider()
+	otel.SetMeterProvider(meterProvider)
+	defer func() {
+		_ = meterProvider.Shutdown(ctx)
+	}()
+
+	// Create test config
+	config := &Config{
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Region:            "us-east-1",
+			S3Bucket:          "test-bucket",
+			S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+			Compression:       "none",
+		},
+		MarshalerName: awss3exporter.OtlpJSON,
+		APIURL:        "https://api.honeycomb.io",
+		IndexedFields: []fieldName{"service.name"},
+	}
+
+	// Create mock S3 writer
+	mockUploader := &mockS3Uploader{}
+	s3Writer := NewS3Writer(&config.S3Uploader, config.MarshalerName, nil, logger)
+	s3Writer.(*s3Writer).uploader = mockUploader
+
+	// Create exporter
+	indexManager := NewIndexManager(config, logger)
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	require.NoError(t, err)
+	exporter.s3Writer = s3Writer
+
+	// Test initial metrics are zero
+	assert.Equal(t, int64(0), exporter.GetSpanCount())
+	assert.Equal(t, int64(0), exporter.GetSpanBytes())
+	assert.Equal(t, int64(0), exporter.GetLogCount())
+	assert.Equal(t, int64(0), exporter.GetLogBytes())
+
+	// Create test traces
+	traces := ptrace.NewTraces()
+	rs := traces.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("service.name", "test-service")
+	ss := rs.ScopeSpans().AppendEmpty()
+	span := ss.Spans().AppendEmpty()
+	span.SetName("test-span")
+	span.SetTraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	span.SetSpanID([8]byte{1, 2, 3, 4, 5, 6, 7, 8})
+
+	// Consume traces
+	err = exporter.consumeTraces(ctx, traces)
+	require.NoError(t, err)
+
+	// Check span metrics are updated
+	assert.Equal(t, int64(1), exporter.GetSpanCount())
+	assert.Greater(t, exporter.GetSpanBytes(), int64(0))
+	spanBytes := exporter.GetSpanBytes()
+
+	// Create test logs
+	logs := plog.NewLogs()
+	rl := logs.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "test-service")
+	sl := rl.ScopeLogs().AppendEmpty()
+	logRecord := sl.LogRecords().AppendEmpty()
+	logRecord.Body().SetStr("test log message")
+	logRecord.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+
+	// Consume logs
+	err = exporter.consumeLogs(ctx, logs)
+	require.NoError(t, err)
+
+	// Check log metrics are updated
+	assert.Equal(t, int64(1), exporter.GetLogCount())
+	assert.Greater(t, exporter.GetLogBytes(), int64(0))
+	logBytes := exporter.GetLogBytes()
+
+	// Consume more traces and logs
+	err = exporter.consumeTraces(ctx, traces)
+	require.NoError(t, err)
+	err = exporter.consumeLogs(ctx, logs)
+	require.NoError(t, err)
+
+	// Check metrics are accumulated
+	assert.Equal(t, int64(2), exporter.GetSpanCount())
+	assert.Equal(t, spanBytes*2, exporter.GetSpanBytes())
+	assert.Equal(t, int64(2), exporter.GetLogCount())
+	assert.Equal(t, logBytes*2, exporter.GetLogBytes())
+
+	// Test reset metrics
+	exporter.ResetMetrics()
+	assert.Equal(t, int64(0), exporter.GetSpanCount())
+	assert.Equal(t, int64(0), exporter.GetSpanBytes())
+	assert.Equal(t, int64(0), exporter.GetLogCount())
+	assert.Equal(t, int64(0), exporter.GetLogBytes())
 }
 
 func TestConsumeTraces(t *testing.T) {

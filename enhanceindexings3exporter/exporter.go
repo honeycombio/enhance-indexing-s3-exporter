@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,6 +27,54 @@ import (
 type fieldName string
 type fieldValue string
 type fieldS3Keys []string
+
+// ExporterMetrics holds metrics for the exporter
+type ExporterMetrics struct {
+	spanCount int64
+	spanBytes int64
+	logCount  int64
+	logBytes  int64
+}
+
+// GetSpanCount returns the current span count
+func (m *ExporterMetrics) GetSpanCount() int64 {
+	return atomic.LoadInt64(&m.spanCount)
+}
+
+// GetSpanBytes returns the current span bytes
+func (m *ExporterMetrics) GetSpanBytes() int64 {
+	return atomic.LoadInt64(&m.spanBytes)
+}
+
+// GetLogCount returns the current log count
+func (m *ExporterMetrics) GetLogCount() int64 {
+	return atomic.LoadInt64(&m.logCount)
+}
+
+// GetLogBytes returns the current log bytes
+func (m *ExporterMetrics) GetLogBytes() int64 {
+	return atomic.LoadInt64(&m.logBytes)
+}
+
+// AddSpanMetrics atomically adds to span count and bytes
+func (m *ExporterMetrics) AddSpanMetrics(count int64, bytes int64) {
+	atomic.AddInt64(&m.spanCount, count)
+	atomic.AddInt64(&m.spanBytes, bytes)
+}
+
+// AddLogMetrics atomically adds to log count and bytes
+func (m *ExporterMetrics) AddLogMetrics(count int64, bytes int64) {
+	atomic.AddInt64(&m.logCount, count)
+	atomic.AddInt64(&m.logBytes, bytes)
+}
+
+// Reset resets all metrics to zero
+func (m *ExporterMetrics) Reset() {
+	atomic.StoreInt64(&m.spanCount, 0)
+	atomic.StoreInt64(&m.spanBytes, 0)
+	atomic.StoreInt64(&m.logCount, 0)
+	atomic.StoreInt64(&m.logBytes, 0)
+}
 
 // MinuteIndexBatch holds index data for a one minute period
 type MinuteIndexBatch struct {
@@ -50,6 +99,7 @@ type enhanceIndexingS3Exporter struct {
 	logger       *zap.Logger
 	s3Writer     S3WriterInterface
 	indexManager *IndexManager
+	metrics      *ExporterMetrics
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -109,6 +159,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		config:       cfg,
 		logger:       logger,
 		indexManager: indexManager,
+		metrics:      &ExporterMetrics{},
 	}, nil
 }
 
@@ -232,6 +283,36 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// GetMetrics returns the current metrics for the exporter
+func (e *enhanceIndexingS3Exporter) GetMetrics() *ExporterMetrics {
+	return e.metrics
+}
+
+// GetSpanCount returns the current span count
+func (e *enhanceIndexingS3Exporter) GetSpanCount() int64 {
+	return e.metrics.GetSpanCount()
+}
+
+// GetSpanBytes returns the current span bytes
+func (e *enhanceIndexingS3Exporter) GetSpanBytes() int64 {
+	return e.metrics.GetSpanBytes()
+}
+
+// GetLogCount returns the current log count
+func (e *enhanceIndexingS3Exporter) GetLogCount() int64 {
+	return e.metrics.GetLogCount()
+}
+
+// GetLogBytes returns the current log bytes
+func (e *enhanceIndexingS3Exporter) GetLogBytes() int64 {
+	return e.metrics.GetLogBytes()
+}
+
+// ResetMetrics resets all metrics to zero
+func (e *enhanceIndexingS3Exporter) ResetMetrics() {
+	e.metrics.Reset()
 }
 
 // startTimer starts a timer that triggers every 30 seconds, which will check for
@@ -485,7 +566,8 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 }
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
-	logFields := []zap.Field{zap.Int("spanCount", traces.SpanCount())}
+	spanCount := int64(traces.SpanCount())
+	logFields := []zap.Field{zap.Int64("spanCount", spanCount)}
 	if e.config.APIURL != "" {
 		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
 	}
@@ -503,11 +585,18 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
-	e.logger.Info("Uploading traces", zap.Int("traceSpanCount", traces.SpanCount()))
+	spanBytes := int64(len(buf))
+	e.logger.Info("Uploading traces",
+		zap.Int64("traceSpanCount", spanCount),
+		zap.Int64("traceSpanBytes", spanBytes))
+
 	s3Key, minute, err := e.s3Writer.WriteBuffer(ctx, buf, "traces")
 	if err != nil {
 		return err
 	}
+
+	// Record metrics
+	e.metrics.AddSpanMetrics(spanCount, spanBytes)
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
@@ -518,13 +607,12 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 }
 
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
-	logFields := []zap.Field{zap.Int("logRecordCount", logs.LogRecordCount())}
+	logCount := int64(logs.LogRecordCount())
+	logFields := []zap.Field{zap.Int64("logRecordCount", logCount)}
 	if e.config.APIURL != "" {
 		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
 	}
 	e.logger.Info("Consuming logs", logFields...)
-
-	// TODO: Add log fields to index
 
 	var marshaler plog.Marshaler
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
@@ -538,11 +626,18 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return fmt.Errorf("failed to marshal logs: %w", err)
 	}
 
-	e.logger.Info("Uploading logs", zap.Int("logRecordCount", logs.LogRecordCount()))
+	logBytes := int64(len(buf))
+	e.logger.Info("Uploading logs",
+		zap.Int64("logRecordCount", logCount),
+		zap.Int64("logRecordBytes", logBytes))
+
 	s3Key, minute, err := e.s3Writer.WriteBuffer(ctx, buf, "logs")
 	if err != nil {
 		return err
 	}
+
+	// Record metrics
+	e.metrics.AddLogMetrics(logCount, logBytes)
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
