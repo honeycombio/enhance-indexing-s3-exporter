@@ -34,7 +34,8 @@ exporters:
 | Field | Description | Default |
 |-------|-------------|---------|
 | `api_key` | This is a Management API key for your Honeycomb account | - |
-| `api_url` | API URL endpoint for usage tracking | "https://api.honeycomb.io/" |
+| `api_secret` | This is a Management API secret for your Honeycomb account | - |
+| `api_endpoint` | API URL endpoint for usage tracking | "https://api.honeycomb.io/" |
 
 #### API URL Configuration
 
@@ -123,7 +124,10 @@ The exporter validates configuration with these rules:
 - ✅ `marshaler` must be "otlp_json" or "otlp_protobuf"
 - ✅ `s3_partition_format` must contain year/month/day/hour/minute placeholders
 - ✅ `s3_partition_format` cannot start or end with "/"
+- ✅ `api_key` and `api_secret` must both be provided together with `api_endpoint`
+- ✅ `api_endpoint` must start with "http://" or "https://"
 - ❌ `file_prefix` is not supported (will cause validation failure)
+
 
 ## Example Configurations
 
@@ -160,9 +164,10 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
    
-    # Honeycomb API Key configuration
-    api_key: ${env:HONEYCOMB_API_KEY}
-    api_url: https://api.honeycomb.io  
+    # Honeycomb API Management Key & Secret configuration
+    api_key: ${env:HONEYCOMB_MANAGEMENT_API_KEY}
+    api_secret: ${env:HONEYCOMB_MANAGEMENT_API_SECRET}
+    api_endpoint: https://api.honeycomb.io  
 
     # S3 configuration
     s3uploader:

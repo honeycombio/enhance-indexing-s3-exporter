@@ -1,7 +1,6 @@
 package enhanceindexings3exporter
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,10 +25,12 @@ type Config struct {
 	MarshalerName    awss3exporter.MarshalerType     `mapstructure:"marshaler"`
 
 	// APIKey is the Management API Key associated with the Honeycomb account.
-	APIKey configopaque.String `mapstructure:"api_key"`
+	// APISecret is the Management API Secret associated with the Honeycomb account.
+	APIKey    configopaque.String `mapstructure:"api_key"`
+	APISecret configopaque.String `mapstructure:"api_secret"`
 
 	// API URL to use (defaults to https://api.honeycomb.io).
-	APIURL string `mapstructure:"api_url"`
+	APIURL string `mapstructure:"api_endpoint"`
 
 	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
@@ -40,7 +41,7 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := validateManagementKey(c.APIURL, string(c.APIKey), c); err != nil {
+	if err := validateManagementKey(c.APIURL, string(c.APIKey), string(c.APISecret), c); err != nil {
 		return err
 	}
 
@@ -169,7 +170,7 @@ func validateHostname(hostname string) error {
 	return nil
 }
 
-func validateManagementKey(apiURL string, managementKey string, config *Config) error {
+func validateManagementKey(apiURL string, managementKey string, managementSecret string) error {
 
 	if (apiURL == "" && managementKey != "") || (apiURL != "" && managementKey == "") {
 		return fmt.Errorf("both api_url and management_key must be provided together")
@@ -178,25 +179,16 @@ func validateManagementKey(apiURL string, managementKey string, config *Config) 
 	// Skip API validation for local development
 	if isLocalAPIURL(apiURL) {
 		fmt.Printf("Skipping API validation for local URL: %s\n", apiURL)
-		config.TeamHCID = "local-dev-team" // Set a placeholder team ID for local development
 		return nil
 	}
 
 	// Construct the auth endpoint URL
 	authURL := fmt.Sprintf("%s/2/auth", apiURL)
-	// Determine if we are using local config by checking for common local endpoints
-	isLocalConfig := isLocalAPIURL(apiURL)
 
 	// Create HTTP client with timeout and skip TLS verification only for local config
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	if isLocalConfig {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-	}
-
 	// Create request
 	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
@@ -204,7 +196,7 @@ func validateManagementKey(apiURL string, managementKey string, config *Config) 
 	}
 
 	// Set authorization header
-	req.Header.Set("Authorization", "Bearer "+managementKey)
+	req.Header.Set("Authorization", "Bearer "+managementKey+":"+managementSecret)
 
 	// Make the request
 	resp, err := client.Do(req)
@@ -216,7 +208,7 @@ func validateManagementKey(apiURL string, managementKey string, config *Config) 
 	// Check response status
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// API key is valid, parse the response to get team ID
+		// API key and secret are valid, parse the response to get team ID
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %w", err)
@@ -229,7 +221,7 @@ func validateManagementKey(apiURL string, managementKey string, config *Config) 
 		if authResponse.Data.Attributes.Disabled {
 			return fmt.Errorf("management key is disabled")
 		}
-		// TODO: change when we adjust the scope name
+		// TODO: change when we adjust the scope name to bulk-ingest:write
 		if !slices.Contains(authResponse.Data.Attributes.Scopes, "bulk-ingest:write") {
 			return fmt.Errorf("management key does not have the required scopes")
 		}
