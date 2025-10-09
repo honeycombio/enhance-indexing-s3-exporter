@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,9 +30,6 @@ type Config struct {
 
 	// API URL to use (defaults to https://api.honeycomb.io).
 	APIURL string `mapstructure:"api_url"`
-
-	// TeamHCID is extracted from the API response during validation
-	TeamHCID string
 
 	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
@@ -100,8 +98,18 @@ func isLocalAPIURL(apiURL string) bool {
 	return strings.Contains(apiURL, "localhost") || strings.Contains(apiURL, "127.0.0.1") || strings.Contains(apiURL, "minio") || strings.Contains(apiURL, "0.0.0.0")
 }
 
-func extractTeamHCID(authResp map[string]any) string {
-	return authResp["data"].(map[string]any)["relationships"].(map[string]any)["team"].(map[string]any)["data"].(map[string]any)["id"].(string)
+var authResponse struct {
+	Data struct {
+		Attributes struct {
+			Disabled bool     `json:"disabled"`
+			Scopes   []string `json:"scopes"`
+		} `json:"attributes"`
+	}
+	Included []struct {
+		Attributes struct {
+			Slug string `json:"slug"`
+		} `json:"attributes"`
+	} `json:"included"`
 }
 
 func validateS3PartitionFormat(format string) error {
@@ -214,14 +222,21 @@ func validateManagementKey(apiURL string, managementKey string, config *Config) 
 			return fmt.Errorf("failed to read response body: %w", err)
 		}
 
-		var authResp map[string]any
-		if err := json.Unmarshal(body, &authResp); err != nil {
+		if err := json.Unmarshal(body, &authResponse); err != nil {
 			return fmt.Errorf("failed to parse auth response: %w", err)
 		}
 
-		// Store the team HCID in the config
-		config.TeamHCID = extractTeamHCID(authResp)
-		fmt.Printf("Team HCID extracted and stored: %s\n", config.TeamHCID)
+		if authResponse.Data.Attributes.Disabled {
+			return fmt.Errorf("management key is disabled")
+		}
+		// TODO: change when we adjust the scope name
+		if !slices.Contains(authResponse.Data.Attributes.Scopes, "bulk-ingest:write") {
+			return fmt.Errorf("management key does not have the required scopes")
+		}
+
+		if authResponse.Included[0].Attributes.Slug == "" {
+			return fmt.Errorf("auth response did not contain valid team slug")
+		}
 
 		return nil
 	case http.StatusUnauthorized:
