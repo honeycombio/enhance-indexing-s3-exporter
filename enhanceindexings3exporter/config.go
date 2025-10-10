@@ -30,21 +30,13 @@ type Config struct {
 	APISecret configopaque.String `mapstructure:"api_secret"`
 
 	// API URL to use (defaults to https://api.honeycomb.io).
-	APIURL string `mapstructure:"api_endpoint"`
+	APIEndpoint string `mapstructure:"api_endpoint"`
 
 	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
 }
 
 func (c *Config) Validate() error {
-	if err := validateHostname(c.APIURL); err != nil {
-		return err
-	}
-
-	if err := validateManagementKey(c.APIURL, string(c.APIKey), string(c.APISecret), c); err != nil {
-		return err
-	}
-
 	if c.S3Uploader.Region == "" {
 		return fmt.Errorf("region is required")
 	}
@@ -72,6 +64,17 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate hostname and management key only if APIEndpoint is provided
+	if c.APIEndpoint != "" {
+		if err := validateHostname(c.APIEndpoint); err != nil {
+			return err
+		}
+	}
+
+	if err := validateManagementKey(c.APIEndpoint, string(c.APIKey), string(c.APISecret)); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -89,14 +92,14 @@ func createDefaultConfig() component.Config {
 			RetryMode:         "standard",
 		},
 		MarshalerName: awss3exporter.OtlpProtobuf,
-		APIURL:        "https://api.honeycomb.io",
+		APIEndpoint:   "https://api.honeycomb.io",
 		APIKey:        configopaque.String(""),
 		IndexedFields: []fieldName{},
 	}
 }
 
-func isLocalAPIURL(apiURL string) bool {
-	return strings.Contains(apiURL, "localhost") || strings.Contains(apiURL, "127.0.0.1") || strings.Contains(apiURL, "minio") || strings.Contains(apiURL, "0.0.0.0")
+func isLocalApiEndpoint(apiEndpoint string) bool {
+	return strings.Contains(apiEndpoint, "localhost") || strings.Contains(apiEndpoint, "127.0.0.1") || strings.Contains(apiEndpoint, "minio") || strings.Contains(apiEndpoint, "0.0.0.0")
 }
 
 var authResponse struct {
@@ -170,22 +173,23 @@ func validateHostname(hostname string) error {
 	return nil
 }
 
-func validateManagementKey(apiURL string, managementKey string, managementSecret string) error {
+func validateManagementKey(apiEndpoint string, managementKey string, managementSecret string) error {
 
-	if (apiURL == "" && managementKey != "") || (apiURL != "" && managementKey == "") {
-		return fmt.Errorf("both api_url and management_key must be provided together")
+	// If any are provided, all must be provided
+	if apiEndpoint == "" || managementKey == "" || managementSecret == "" {
+		return fmt.Errorf("api_endpoint, management_key, and management_secret must all be provided together")
 	}
 
 	// Skip API validation for local development
-	if isLocalAPIURL(apiURL) {
-		fmt.Printf("Skipping API validation for local URL: %s\n", apiURL)
+	if isLocalApiEndpoint(apiEndpoint) {
+		fmt.Printf("Skipping API validation for local URL: %s\n", apiEndpoint)
 		return nil
 	}
 
 	// Construct the auth endpoint URL
-	authURL := fmt.Sprintf("%s/2/auth", apiURL)
+	authURL := fmt.Sprintf("%s/2/auth", apiEndpoint)
 
-	// Create HTTP client with timeout and skip TLS verification only for local config
+	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -221,7 +225,7 @@ func validateManagementKey(apiURL string, managementKey string, managementSecret
 		if authResponse.Data.Attributes.Disabled {
 			return fmt.Errorf("management key is disabled")
 		}
-		// TODO: change when we adjust the scope name to bulk-ingest:write
+		// TODO: change when we adjust the scope name to the enhance indexing scope name
 		if !slices.Contains(authResponse.Data.Attributes.Scopes, "bulk-ingest:write") {
 			return fmt.Errorf("management key does not have the required scopes")
 		}
