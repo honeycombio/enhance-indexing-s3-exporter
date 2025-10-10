@@ -1,7 +1,10 @@
 package enhanceindexings3exporter
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
@@ -17,6 +20,25 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 )
+
+// Mock HTTP client for testing
+type mockHTTPClient struct {
+	response *http.Response
+	err      error
+}
+
+func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return m.response, m.err
+}
+
+// Helper function to create a mock HTTP response
+func createMockResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+		Header:     make(http.Header),
+	}
+}
 
 func TestConfigMerging(t *testing.T) {
 	t.Run("session.id is always in indexed fields", func(t *testing.T) {
@@ -93,6 +115,85 @@ func TestConfigMerging(t *testing.T) {
 	})
 }
 
+func TestManagementKeyValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		apiEndpoint      string
+		managementKey    string
+		managementSecret string
+		mockResponse     *http.Response
+		mockError        error
+		expectError      bool
+		errorMsg         string
+	}{
+		{
+			name:             "valid credentials with successful API response",
+			apiEndpoint:      "https://api.honeycomb.io",
+			managementKey:    "test-key",
+			managementSecret: "test-secret",
+			mockResponse: createMockResponse(200, `{
+				"data": {
+					"attributes": {
+						"disabled": false,
+						"scopes": ["bulk-ingest:write"]
+					}
+				},
+				"included": [{
+					"attributes": {
+						"slug": "test-team"
+					}
+				}]
+			}`),
+			expectError: false,
+		},
+		{
+			name:             "invalid API key",
+			apiEndpoint:      "https://api.honeycomb.io",
+			managementKey:    "invalid-key",
+			managementSecret: "invalid-secret",
+			mockResponse:     createMockResponse(401, ""),
+			expectError:      true,
+			errorMsg:         "invalid management API key",
+		},
+		{
+			name:             "missing credentials",
+			apiEndpoint:      "",
+			managementKey:    "",
+			managementSecret: "",
+			expectError:      true,
+			errorMsg:         "api_endpoint, management_key, and management_secret must all be provided together",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var client HTTPClient
+			if tt.mockResponse != nil || tt.mockError != nil {
+				client = &mockHTTPClient{
+					response: tt.mockResponse,
+					err:      tt.mockError,
+				}
+			}
+
+			var err error
+			if client != nil {
+				err = validateManagementKeyWithClient(tt.apiEndpoint, tt.managementKey, tt.managementSecret, client)
+			} else {
+				err = validateManagementKey(tt.apiEndpoint, tt.managementKey, tt.managementSecret)
+			}
+
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfigValidation(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -126,6 +227,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpJSON,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: false,
 		},
@@ -137,6 +241,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "s3_bucket is required unless a custom endpoint is provided",
@@ -151,6 +258,9 @@ func TestConfigValidation(t *testing.T) {
 					Compression:       "invalid",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "compression must be 'gzip' or 'none'",
@@ -165,6 +275,9 @@ func TestConfigValidation(t *testing.T) {
 					RetryMode:         "invalid",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "retry_mode must be 'standard' or 'adaptive'",
@@ -178,6 +291,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: "invalid",
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "marshaler must be 'otlp_json' or 'otlp_protobuf'",
@@ -191,6 +307,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot be empty",
@@ -204,6 +323,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=2006/month=01/day=02/hour=15/minute=04",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: false,
 		},
@@ -216,6 +338,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "S3PartitionFormat must contain placeholders of year, month, day, hour and minute",
@@ -229,6 +354,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "/year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot start with '/'",
@@ -242,7 +370,9 @@ func TestConfigValidation(t *testing.T) {
 					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M/",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
-			},
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot end with '/'",
 		},
@@ -256,6 +386,9 @@ func TestConfigValidation(t *testing.T) {
 					FilePrefix:        "custom-prefix",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
 			errorMsg:    "file_prefix is not supported",
@@ -368,8 +501,8 @@ func TestConfigValidation(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "valid management key and api_endpoint for production",
-			config: &Config{
+			name: "valid management key, secret and api_endpoint for production",
+			config: &Config{q``
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:            "us-east-1",
 					S3Bucket:          "test-bucket",
@@ -386,7 +519,30 @@ func TestConfigValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
+			var err error
+
+			// For tests that should pass and have API credentials, use a mock client
+			if !tt.expectError && tt.config.APIEndpoint != "" && tt.config.APIKey != "" && tt.config.APISecret != "" {
+				mockClient := &mockHTTPClient{
+					response: createMockResponse(200, `{
+						"data": {
+							"attributes": {
+								"disabled": false,
+								"scopes": ["bulk-ingest:write"]
+							}
+						},
+						"included": [{
+							"attributes": {
+								"slug": "test-team"
+							}
+						}]
+					}`),
+				}
+				err = tt.config.ValidateWithClient(mockClient)
+			} else {
+				err = tt.config.Validate()
+			}
+
 			if tt.expectError {
 				require.Error(t, err)
 				if tt.errorMsg != "" {

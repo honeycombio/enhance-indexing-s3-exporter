@@ -17,6 +17,16 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
+// HTTPClient interface for testing
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// Default HTTP client
+var defaultHTTPClient HTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 type Config struct {
 	QueueBatchConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
 	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
@@ -37,6 +47,10 @@ type Config struct {
 }
 
 func (c *Config) Validate() error {
+	return c.ValidateWithClient(defaultHTTPClient)
+}
+
+func (c *Config) ValidateWithClient(client HTTPClient) error {
 	if c.S3Uploader.Region == "" {
 		return fmt.Errorf("region is required")
 	}
@@ -71,7 +85,7 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if err := validateManagementKey(c.APIEndpoint, string(c.APIKey), string(c.APISecret)); err != nil {
+	if err := validateManagementKeyWithClient(c.APIEndpoint, string(c.APIKey), string(c.APISecret), client); err != nil {
 		return err
 	}
 
@@ -174,8 +188,11 @@ func validateHostname(hostname string) error {
 }
 
 func validateManagementKey(apiEndpoint string, managementKey string, managementSecret string) error {
+	return validateManagementKeyWithClient(apiEndpoint, managementKey, managementSecret, defaultHTTPClient)
+}
 
-	// If any are provided, all must be provided
+func validateManagementKeyWithClient(apiEndpoint string, managementKey string, managementSecret string, client HTTPClient) error {
+	// All three must be provided
 	if apiEndpoint == "" || managementKey == "" || managementSecret == "" {
 		return fmt.Errorf("api_endpoint, management_key, and management_secret must all be provided together")
 	}
@@ -189,10 +206,6 @@ func validateManagementKey(apiEndpoint string, managementKey string, managementS
 	// Construct the auth endpoint URL
 	authURL := fmt.Sprintf("%s/2/auth", apiEndpoint)
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
 	// Create request
 	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
