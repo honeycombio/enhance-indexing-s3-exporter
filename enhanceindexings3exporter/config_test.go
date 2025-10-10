@@ -373,6 +373,7 @@ func TestConfigValidation(t *testing.T) {
 				APIEndpoint:   "https://api.honeycomb.io",
 				APIKey:        configopaque.String("test-api-key"),
 				APISecret:     configopaque.String("test-api-secret"),
+			},
 			expectError: true,
 			errorMsg:    "S3PartitionFormat cannot end with '/'",
 		},
@@ -502,7 +503,7 @@ func TestConfigValidation(t *testing.T) {
 		},
 		{
 			name: "valid management key, secret and api_endpoint for production",
-			config: &Config{q``
+			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:            "us-east-1",
 					S3Bucket:          "test-bucket",
