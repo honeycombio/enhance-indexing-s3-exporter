@@ -8,24 +8,24 @@ exporters:
   debug:
     #verbosity: detailed
   enhance_indexing_s3_exporter:
-    api_key: "test-api-key"
-    api_secret: "test-api-secret"
-    api_endpoint: "https://localhost"
+    api_key: 'test-api-key'
+    api_secret: 'test-api-secret'
+    api_endpoint: 'https://localhost'
     marshaler: otlp_proto
     s3uploader:
-      region: "us-east-1"
-      s3_bucket: "otel-demo-for-bulk-ingest"
-      s3_prefix: "demo-traces/"
+      region: 'us-east-1'
+      s3_bucket: 'otel-demo-for-bulk-ingest'
+      s3_prefix: 'demo-traces/'
     sending_queue:
-      batch:
-        flush_timeout: 30s
-        max_size: 50000
-        min_size: 50000
-      enabled: true
-      queue_size: 500000
-      sizer: items
+        batch:
+            flush_timeout: 30s
+            max_size: 50000
+            min_size: 50000
+        enabled: true
+        queue_size: 500000
+        sizer: items
     timeout: 30s
-    indexed_fields: ["service.instance.id"]
+    indexed_fields: ['service.instance.id']
 
 service:
   telemetry:
