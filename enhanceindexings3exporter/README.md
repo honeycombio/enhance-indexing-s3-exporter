@@ -15,7 +15,8 @@ exporters:
     retry_on_failure: # Retry configuration
    
     # Honeycomb API Key configuration
-    api_key: ${env:HONEYCOMB_API_KEY}
+    api_key: ${env:HONEYCOMB_MANAGEMENT_API_KEY}
+    api_secret: ${env:HONEYCOMB_MANAGEMENT_API_SECRET}
     api_endpoint: https://api.honeycomb.io  
 
     # S3 uploader configuration (required)
