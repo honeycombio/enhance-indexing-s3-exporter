@@ -239,7 +239,7 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
-		zap.String("api_url", e.config.APIURL))
+		zap.String("api_endpoint", e.config.APIEndpoint))
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
@@ -556,8 +556,8 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 			zap.String("key", indexKey),
 			zap.String("format", string(im.config.MarshalerName)),
 		}
-		if im.config.APIURL != "" {
-			logFields = append(logFields, zap.String("api_url", im.config.APIURL))
+		if im.config.APIEndpoint != "" {
+			logFields = append(logFields, zap.String("api_endpoint", im.config.APIEndpoint))
 		}
 		im.logger.Info("Uploaded index", logFields...)
 	}
@@ -567,9 +567,9 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	spanCount := int64(traces.SpanCount())
-	logFields := []zap.Field{zap.Int64("spanCount", spanCount)}
-	if e.config.APIURL != "" {
-		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
+	logFields := []zap.Field{zap.Int64("spanCount", traces.spanCount)}
+	if e.config.APIEndpoint != "" {
+		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming traces", logFields...)
 
@@ -609,8 +609,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.Logs) error {
 	logCount := int64(logs.LogRecordCount())
 	logFields := []zap.Field{zap.Int64("logRecordCount", logCount)}
-	if e.config.APIURL != "" {
-		logFields = append(logFields, zap.String("api_url", e.config.APIURL))
+	if e.config.APIEndpoint != "" {
+		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming logs", logFields...)
 
