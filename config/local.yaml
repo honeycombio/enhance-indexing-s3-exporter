@@ -12,7 +12,8 @@ exporters:
     #verbosity: detailed
   enhance_indexing_s3_exporter:
     api_key: 'test-api-key'
-    api_url: 'https://localhost'
+    api_secret: 'test-api-secret'
+    api_endpoint: 'https://localhost'
     marshaler: otlp_proto
     s3uploader:
       endpoint: 'http://minio:9000/'
