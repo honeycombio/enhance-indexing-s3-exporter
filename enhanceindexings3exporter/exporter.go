@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
@@ -106,11 +107,17 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
+	// Create metrics with OpenTelemetry instrumentation
+	metrics, err := NewExporterMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
+	}
+
 	return &enhanceIndexingS3Exporter{
 		config:       cfg,
 		logger:       logger,
 		indexManager: indexManager,
-		metrics:      &ExporterMetrics{},
+		metrics:      metrics,
 	}, nil
 }
 
@@ -516,8 +523,14 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return err
 	}
 
-	// Record metrics
-	e.metrics.AddSpanMetrics(spanCount, spanBytes)
+	// Record metrics with OpenTelemetry instrumentation
+	attrs := []attribute.KeyValue{
+		attribute.String("marshaler", string(e.config.MarshalerName)),
+	}
+	if e.config.APIEndpoint != "" {
+		attrs = append(attrs, attribute.String("api_endpoint", e.config.APIEndpoint))
+	}
+	e.metrics.AddSpanMetrics(ctx, spanCount, spanBytes, attrs)
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
@@ -557,8 +570,14 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return err
 	}
 
-	// Record metrics
-	e.metrics.AddLogMetrics(logCount, logBytes)
+	// Record metrics with OpenTelemetry instrumentation
+	attrs := []attribute.KeyValue{
+		attribute.String("marshaler", string(e.config.MarshalerName)),
+	}
+	if e.config.APIEndpoint != "" {
+		attrs = append(attrs, attribute.String("api_endpoint", e.config.APIEndpoint))
+	}
+	e.metrics.AddLogMetrics(ctx, logCount, logBytes, attrs)
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
