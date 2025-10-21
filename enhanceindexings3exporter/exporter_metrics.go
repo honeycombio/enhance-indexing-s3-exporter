@@ -22,10 +22,12 @@ type ExporterMetrics struct {
 	spanBytesTotal metric.Int64Counter
 	logCountTotal  metric.Int64Counter
 	logBytesTotal  metric.Int64Counter
+	// Pre-computed attributes to avoid allocating on every metric call
+	attrs []attribute.KeyValue
 }
 
 // NewExporterMetrics creates a new ExporterMetrics with OpenTelemetry instrumentation
-func NewExporterMetrics() (*ExporterMetrics, error) {
+func NewExporterMetrics(config *Config) (*ExporterMetrics, error) {
 	// Create meter with distinct instrumentation scope
 	meter := otel.Meter(instrumentationScopeName)
 
@@ -62,12 +64,21 @@ func NewExporterMetrics() (*ExporterMetrics, error) {
 		return nil, fmt.Errorf("failed to create log bytes counter: %w", err)
 	}
 
+	// Pre-compute attributes from config to avoid allocating on every metric call
+	attrs := []attribute.KeyValue{
+		attribute.String("marshaler", string(config.MarshalerName)),
+	}
+	if config.APIEndpoint != "" {
+		attrs = append(attrs, attribute.String("api_endpoint", config.APIEndpoint))
+	}
+
 	return &ExporterMetrics{
 		meter:          meter,
 		spanCountTotal: spanCountTotal,
 		spanBytesTotal: spanBytesTotal,
 		logCountTotal:  logCountTotal,
 		logBytesTotal:  logBytesTotal,
+		attrs:          attrs,
 	}, nil
 }
 
@@ -75,20 +86,20 @@ func NewExporterMetrics() (*ExporterMetrics, error) {
 // Metrics are exported through the configured OpenTelemetry metrics pipeline.
 
 // AddSpanMetrics records span count and bytes to OpenTelemetry metrics with distinct instrumentation scope
-func (m *ExporterMetrics) AddSpanMetrics(ctx context.Context, count int64, bytes int64, attrs []attribute.KeyValue) {
-	// Record OpenTelemetry metrics with distinct instrumentation scope
+func (m *ExporterMetrics) AddSpanMetrics(ctx context.Context, count int64, bytes int64) {
+	// Record OpenTelemetry metrics with distinct instrumentation scope using pre-computed attributes
 	if m.spanCountTotal != nil && m.spanBytesTotal != nil {
-		m.spanCountTotal.Add(ctx, count, metric.WithAttributes(attrs...))
-		m.spanBytesTotal.Add(ctx, bytes, metric.WithAttributes(attrs...))
+		m.spanCountTotal.Add(ctx, count, metric.WithAttributes(m.attrs...))
+		m.spanBytesTotal.Add(ctx, bytes, metric.WithAttributes(m.attrs...))
 	}
 }
 
 // AddLogMetrics records log count and bytes to OpenTelemetry metrics with distinct instrumentation scope
-func (m *ExporterMetrics) AddLogMetrics(ctx context.Context, count int64, bytes int64, attrs []attribute.KeyValue) {
-	// Record OpenTelemetry metrics with distinct instrumentation scope
+func (m *ExporterMetrics) AddLogMetrics(ctx context.Context, count int64, bytes int64) {
+	// Record OpenTelemetry metrics with distinct instrumentation scope using pre-computed attributes
 	if m.logCountTotal != nil && m.logBytesTotal != nil {
-		m.logCountTotal.Add(ctx, count, metric.WithAttributes(attrs...))
-		m.logBytesTotal.Add(ctx, bytes, metric.WithAttributes(attrs...))
+		m.logCountTotal.Add(ctx, count, metric.WithAttributes(m.attrs...))
+		m.logBytesTotal.Add(ctx, bytes, metric.WithAttributes(m.attrs...))
 	}
 }
 

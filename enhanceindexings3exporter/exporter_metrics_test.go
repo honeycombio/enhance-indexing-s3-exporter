@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -119,27 +118,28 @@ func TestExporterMetricsCollection(t *testing.T) {
 
 func TestExporterMetricsThreadSafety(t *testing.T) {
 	// Test that metrics creation and concurrent recording works without panics
-	metrics, err := NewExporterMetrics()
+	config := &Config{
+		MarshalerName: awss3exporter.OtlpJSON,
+		APIEndpoint:   "http://localhost:8086",
+	}
+	metrics, err := NewExporterMetrics(config)
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	attrs := []attribute.KeyValue{
-		attribute.String("test", "value"),
-	}
 
 	// Run concurrent metric updates
 	done := make(chan bool, 2)
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			metrics.AddSpanMetrics(ctx, 1, 100, attrs)
+			metrics.AddSpanMetrics(ctx, 1, 100)
 		}
 		done <- true
 	}()
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			metrics.AddLogMetrics(ctx, 1, 200, attrs)
+			metrics.AddLogMetrics(ctx, 1, 200)
 		}
 		done <- true
 	}()
