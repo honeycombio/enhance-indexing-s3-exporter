@@ -34,7 +34,7 @@ func TestExporterMetricsCollection(t *testing.T) {
 	// Create mock S3 writer
 	mockUploader := &mockS3Uploader{}
 	s3Writer := NewS3Writer(&config.S3Uploader, config.MarshalerName, nil, logger)
-	s3Writer.(*s3Writer).uploader = mockUploader
+	s3Writer.uploader = mockUploader
 
 	// Create exporter
 	indexManager := NewIndexManager(config, logger)
