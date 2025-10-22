@@ -70,7 +70,7 @@ func TestConsumeTraces(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := zap.NewNop()
 			indexManager := NewIndexManager(tt.config, logger)
-			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger, indexManager)
+			exporter, err := newEnhanceIndexingS3Exporter(ctx, tt.config, logger, indexManager)
 			require.NoError(t, err)
 
 			// Mock the s3Writer
@@ -145,7 +145,7 @@ func TestConsumeLogs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := zap.NewNop()
 			indexManager := NewIndexManager(tt.config, logger)
-			exporter, err := newEnhanceIndexingS3Exporter(tt.config, logger, indexManager)
+			exporter, err := newEnhanceIndexingS3Exporter(ctx, tt.config, logger, indexManager)
 			require.NoError(t, err)
 
 			// Mock the s3Writer
@@ -202,7 +202,7 @@ func TestAddTracesToIndex(t *testing.T) {
 	}
 
 	indexManager := NewIndexManager(config, logger)
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	exporter, err := newEnhanceIndexingS3Exporter(ctx, config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Initialize index batch
@@ -254,7 +254,7 @@ func TestAddLogsToIndex(t *testing.T) {
 	}
 
 	indexManager := NewIndexManager(config, logger)
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	exporter, err := newEnhanceIndexingS3Exporter(ctx, config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Initialize index batch
@@ -337,7 +337,7 @@ func TestMarshalIndex(t *testing.T) {
 			}
 
 			indexManager := NewIndexManager(config, logger)
-			exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+			exporter, err := newEnhanceIndexingS3Exporter(ctx, config, logger, indexManager)
 			require.NoError(t, err)
 
 			data, err := exporter.indexManager.marshalIndex(tt.fieldName, tt.fieldIndex)
@@ -375,7 +375,7 @@ func TestUploadBatch(t *testing.T) {
 	}
 
 	indexManager := NewIndexManager(config, logger)
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	exporter, err := newEnhanceIndexingS3Exporter(ctx, config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Mock the s3Writer
@@ -425,7 +425,7 @@ func TestRolloverIndexes(t *testing.T) {
 	}
 
 	indexManager := NewIndexManager(config, logger)
-	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	exporter, err := newEnhanceIndexingS3Exporter(ctx, config, logger, indexManager)
 	require.NoError(t, err)
 
 	// Mock the s3Writer

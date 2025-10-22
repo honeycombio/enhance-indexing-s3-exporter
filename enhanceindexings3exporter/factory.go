@@ -61,7 +61,7 @@ func createTracesExporter(
 
 	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
-	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
+	s3Exporter, err := newEnhanceIndexingS3Exporter(ctx, config, set.Logger, indexManager)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func createLogsExporter(
 
 	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
-	s3Exporter, err := newEnhanceIndexingS3Exporter(config, set.Logger, indexManager)
+	s3Exporter, err := newEnhanceIndexingS3Exporter(ctx, config, set.Logger, indexManager)
 	if err != nil {
 		return nil, err
 	}

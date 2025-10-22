@@ -44,6 +44,23 @@ type Config struct {
 
 	// IndexedFields is a list of fields to index.
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
+
+	// Metrics configuration for exporting internal metrics
+	Metrics MetricsConfig `mapstructure:"metrics"`
+}
+
+// MetricsConfig holds configuration for metrics export
+type MetricsConfig struct {
+	// Enabled determines whether to export metrics
+	Enabled bool `mapstructure:"enabled"`
+	// Endpoint is the OTLP/HTTP endpoint to export metrics to (e.g., "localhost:4318")
+	Endpoint string `mapstructure:"endpoint"`
+	// Insecure determines whether to use HTTP instead of HTTPS
+	Insecure bool `mapstructure:"insecure"`
+	// Headers are additional headers to send with each export request
+	Headers map[string]string `mapstructure:"headers"`
+	// ExportIntervalSeconds is how often to export metrics in seconds (default: 10)
+	ExportIntervalSeconds int `mapstructure:"export_interval_seconds"`
 }
 
 func (c *Config) Validate() error {
@@ -109,6 +126,13 @@ func createDefaultConfig() component.Config {
 		APIEndpoint:   "https://api.honeycomb.io",
 		APIKey:        configopaque.String(""),
 		IndexedFields: []fieldName{},
+		Metrics: MetricsConfig{
+			Enabled:               false,
+			Endpoint:              "localhost:4318",
+			Insecure:              true,
+			Headers:               map[string]string{},
+			ExportIntervalSeconds: 10,
+		},
 	}
 }
 

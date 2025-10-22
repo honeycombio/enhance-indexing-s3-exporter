@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal/exporter_metrics"
+	metrics "github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -47,11 +47,12 @@ type IndexManager struct {
 }
 
 type enhanceIndexingS3Exporter struct {
-	config       *Config
-	logger       *zap.Logger
-	s3Writer     S3WriterInterface
-	indexManager *IndexManager
-	metrics      *metrics.ExporterMetrics
+	config          *Config
+	logger          *zap.Logger
+	s3Writer        S3WriterInterface
+	indexManager    *IndexManager
+	metrics         *metrics.ExporterMetrics
+	metricsProvider *metrics.MetricsProvider
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -106,18 +107,51 @@ func buildIndexesFromAttributes(
 	return fv
 }
 
-func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
-	exporterMetrics, err := metrics.NewExporterMetrics(cfg.MarshalerName, cfg.APIEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
+func newEnhanceIndexingS3Exporter(ctx context.Context, cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
+	var metricsProvider *metrics.MetricsProvider
+	var exporterMetrics *metrics.ExporterMetrics
+	var err error
+
+	// Initialize metrics provider if metrics are enabled
+	if cfg.Metrics.Enabled {
+		logger.Info("Initializing metrics provider", zap.String("endpoint", cfg.Metrics.Endpoint))
+
+		metricsConfig := metrics.MetricsProviderConfig{
+			Endpoint:       cfg.Metrics.Endpoint,
+			Insecure:       cfg.Metrics.Insecure,
+			Headers:        cfg.Metrics.Headers,
+			ExportInterval: time.Duration(cfg.Metrics.ExportIntervalSeconds) * time.Second,
+			ServiceName:    "enhance-indexing-s3-exporter",
+			ServiceVersion: "0.1.0",
+		}
+
+		metricsProvider, err = metrics.NewMetricsProvider(ctx, metricsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create metrics provider: %w", err)
+		}
+
+		// Create exporter metrics with the configured meter provider
+		exporterMetrics, err = metrics.NewExporterMetrics(metricsProvider.MeterProvider(), cfg.MarshalerName, cfg.APIEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
+		}
+
+		logger.Info("Metrics provider initialized successfully")
+	} else {
+		logger.Info("Metrics export disabled")
+		// Create exporter metrics with nil meter provider (no-op)
+		exporterMetrics, err = metrics.NewExporterMetrics(nil, cfg.MarshalerName, cfg.APIEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
+		}
 	}
 
 	return &enhanceIndexingS3Exporter{
-		config:       cfg,
-		logger:       logger,
-		indexManager: indexManager,
-		metrics:      exporterMetrics,
+		config:          cfg,
+		logger:          logger,
+		indexManager:    indexManager,
+		metrics:         exporterMetrics,
+		metricsProvider: metricsProvider,
 	}, nil
 }
 
@@ -233,6 +267,15 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
+	// Shutdown metrics provider first to flush any pending metrics
+	if e.metricsProvider != nil {
+		e.logger.Info("Shutting down metrics provider")
+		if err := e.metricsProvider.Shutdown(ctx); err != nil {
+			e.logger.Error("Failed to shutdown metrics provider", zap.Error(err))
+			// Continue with shutdown even if metrics provider fails
+		}
+	}
+
 	if e.indexManager != nil {
 		err := e.indexManager.shutdown(ctx)
 		if err != nil {

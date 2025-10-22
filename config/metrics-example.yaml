@@ -1,0 +1,80 @@
+# Example configuration for the enhance-indexing-s3-exporter with metrics export enabled
+
+exporters:
+  enhance_indexing_s3_exporter:
+    # S3 Configuration
+    s3uploader:
+      region: us-east-1
+      s3_bucket: my-bucket
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      compression: gzip
+      retry_max_attempts: 3
+      retry_mode: standard
+
+    # Data marshaling format
+    marshaler: otlp_protobuf # or otlp_json
+
+    # Honeycomb API Configuration
+    api_endpoint: https://api.honeycomb.io
+    api_key: ${HONEYCOMB_API_KEY}
+    api_secret: ${HONEYCOMB_API_SECRET}
+
+    # Fields to index
+    indexed_fields:
+      - trace.span_id
+      - http.status_code
+      - user.id
+
+    # Metrics Export Configuration
+    metrics:
+      # Enable metrics export
+      enabled: true
+
+      # OTLP/HTTP endpoint to export metrics to
+      # This should be the hostname:port without the path
+      # The exporter will automatically append the OTLP HTTP path
+      endpoint: localhost:4318
+
+      # Use insecure HTTP instead of HTTPS
+      insecure: true
+
+      # Export interval in seconds (how often to send metrics)
+      export_interval_seconds: 10
+
+      # Optional: Additional headers to send with metric exports
+      headers:
+        # Example: Add authorization header for your metrics backend
+        # Authorization: "Bearer your-token-here"
+        # Or Honeycomb API key for sending to Honeycomb
+        # x-honeycomb-team: "your-api-key-here"
+# Example with Honeycomb as the metrics backend
+# exporters:
+#   enhance_indexing_s3_exporter:
+#     metrics:
+#       enabled: true
+#       endpoint: api.honeycomb.io:443
+#       insecure: false
+#       export_interval_seconds: 30
+#       headers:
+#         x-honeycomb-team: ${HONEYCOMB_METRICS_API_KEY}
+#         x-honeycomb-dataset: exporter-metrics
+
+# Example with a local OTLP collector
+# exporters:
+#   enhance_indexing_s3_exporter:
+#     metrics:
+#       enabled: true
+#       endpoint: otel-collector:4318
+#       insecure: true
+#       export_interval_seconds: 15
+
+# Metrics exported by the exporter:
+# - indexer_spans_total: Total number of spans processed
+# - indexer_span_bytes_total: Total bytes of span data processed
+# - indexer_logs_total: Total number of log records processed
+# - indexer_log_bytes_total: Total bytes of log data processed
+#
+# All metrics include the following attributes:
+# - marshaler: The marshaler type (otlp_json or otlp_protobuf)
+# - api_endpoint: The Honeycomb API endpoint being used
+

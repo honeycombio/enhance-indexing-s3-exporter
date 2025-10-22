@@ -1,0 +1,63 @@
+# OpenTelemetry Collector configuration for receiving metrics from the exporter
+# This example shows how to receive metrics via OTLP/HTTP and export them to various backends
+
+receivers:
+  # OTLP HTTP receiver for metrics from the enhance-indexing-s3-exporter
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batch processor for efficiency
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: service.name
+        value: enhance-indexing-s3-exporter
+        action: upsert
+
+exporters:
+  # Export to stdout for debugging
+  logging:
+    verbosity: detailed
+
+  # Export to Prometheus endpoint
+  prometheus:
+    endpoint: 0.0.0.0:8888
+
+  # Example: Export to Honeycomb
+  # Uncomment and configure with your API key
+  # otlphttp/honeycomb:
+  #   endpoint: https://api.honeycomb.io
+  #   headers:
+  #     x-honeycomb-team: ${HONEYCOMB_API_KEY}
+  #     x-honeycomb-dataset: exporter-metrics
+
+  # Example: Export to another OTLP endpoint
+  # otlp/backend:
+  #   endpoint: your-backend:4317
+  #   tls:
+  #     insecure: false
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [logging, prometheus]
+      # Add your exporters here: [logging, prometheus, otlphttp/honeycomb]
+
+  # Enable telemetry for the collector itself
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888
+
+  # Health check extension
+  extensions: []

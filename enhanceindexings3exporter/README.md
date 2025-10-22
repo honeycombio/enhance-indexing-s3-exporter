@@ -28,6 +28,13 @@ exporters:
    
     # Index additional fields
     indexed_fields: ["user.id", "customer.id"]
+    
+    # Metrics export configuration (optional)
+    metrics:
+      enabled: true
+      endpoint: localhost:4318
+      insecure: true
+      export_interval_seconds: 10
 ```
 
 ### Honeycomb API Configuration
@@ -40,10 +47,8 @@ exporters:
 
 #### API URL Configuration
 
-TODO update when we implement metrics endpoint
-
-- **Valid formats**: Hostnames, FQDNs, or IP addresses
-- **Examples**: `"localhost"`, `"prod-server.example.com"`, `"192.168.1.100"`
+- **Valid formats**: Must start with `http://` or `https://`, followed by hostname/FQDN or IP
+- **Examples**: `"https://api.honeycomb.io"`, `"http://localhost:8080"`, `"https://192.168.1.100"`
 
 ### S3 Uploader Configuration (`s3uploader`)
 
@@ -62,6 +67,28 @@ TODO update when we implement metrics endpoint
 [1]: https://www.man7.org/linux/man-pages/man3/strftime.3.html
 
 **Note**: `file_prefix` is **not supported** and will cause validation to fail.
+
+### Metrics Export Configuration (`metrics`)
+
+The exporter can export internal metrics about its operation using OpenTelemetry's OTLP/HTTP protocol.
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Enable or disable metrics export | false |
+| `endpoint` | OTLP/HTTP endpoint (hostname:port only, no path) | "localhost:4318" |
+| `insecure` | Use HTTP instead of HTTPS | true |
+| `export_interval_seconds` | How often to export metrics | 10 |
+| `headers` | Additional HTTP headers for authentication | {} |
+
+**Exported Metrics** (using delta temporality):
+- `indexer_spans_total`: Total number of spans processed
+- `indexer_span_bytes_total`: Total bytes of span data processed  
+- `indexer_logs_total`: Total number of log records processed
+- `indexer_log_bytes_total`: Total bytes of log data processed
+
+**Note**: All metrics use delta aggregation temporality, which reports the change in value since the last export. This is the preferred temporality for backends like Honeycomb.
+
+For detailed information, see [METRICS.md](METRICS.md).
 
 ### Marshaler Configuration
 
@@ -190,6 +217,16 @@ exporters:
       - "deployment.version"
     # Can also one-line the index list
     # indexed_fields: ["user.id", "customer.id", "environment", "deployment.version"]
+    
+    # Metrics export (optional)
+    metrics:
+      enabled: true
+      endpoint: otel-collector:4318  # Or localhost:4318 for local dev
+      insecure: true
+      export_interval_seconds: 15
+      headers: {}
+        # Optional: Add authentication headers
+        # x-honeycomb-team: ${env:HONEYCOMB_METRICS_API_KEY}
 
 # Pipeline configuration
 service:

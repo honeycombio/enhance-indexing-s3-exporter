@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -28,9 +27,15 @@ type ExporterMetrics struct {
 }
 
 // NewExporterMetrics creates a new ExporterMetrics with OpenTelemetry instrumentation
-func NewExporterMetrics(marshalerType awss3exporter.MarshalerType, apiEndpoint string) (*ExporterMetrics, error) {
+// If meterProvider is nil, no metrics will be recorded
+func NewExporterMetrics(meterProvider metric.MeterProvider, marshalerType awss3exporter.MarshalerType, apiEndpoint string) (*ExporterMetrics, error) {
+	// If no meter provider is provided, return a no-op metrics instance
+	if meterProvider == nil {
+		return &ExporterMetrics{}, nil
+	}
+
 	// Create meter with distinct instrumentation scope
-	meter := otel.Meter(instrumentationScopeName)
+	meter := meterProvider.Meter(instrumentationScopeName)
 
 	// Create metric instruments
 	spanCountTotal, err := meter.Int64Counter(

@@ -1,0 +1,63 @@
+# Complete example configuration for the enhance-indexing-s3-exporter with metrics enabled
+# This shows a full working configuration
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # Configure the enhance-indexing-s3-exporter
+  enhance_indexing_s3_exporter:
+    # S3 Configuration
+    s3uploader:
+      region: us-east-1
+      s3_bucket: ${S3_BUCKET}
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      compression: gzip
+      retry_max_attempts: 3
+      retry_mode: standard
+
+    # Data marshaling
+    marshaler: otlp_protobuf
+
+    # Honeycomb API
+    api_endpoint: https://api.honeycomb.io
+    api_key: ${HONEYCOMB_API_KEY}
+    api_secret: ${HONEYCOMB_API_SECRET}
+
+    # Fields to index
+    indexed_fields:
+      - service.name
+      - session.id
+      - http.status_code
+      - http.method
+      - user.id
+
+    # Metrics Export Configuration
+    metrics:
+      enabled: true
+      endpoint: otel-collector:4318 # Use service name in Docker Compose
+      insecure: true
+      export_interval_seconds: 15
+      headers: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [enhance_indexing_s3_exporter]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [enhance_indexing_s3_exporter]

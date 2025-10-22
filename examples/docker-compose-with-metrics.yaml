@@ -1,0 +1,41 @@
+# Example Docker Compose setup with metrics collection
+# This demonstrates how to run the exporter with metrics export to an OTLP collector
+
+version: "3.8"
+
+services:
+  # OpenTelemetry Collector to receive metrics
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-metrics-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4318:4318" # OTLP HTTP receiver
+      - "8888:8888" # Prometheus metrics
+      - "13133:13133" # Health check
+    networks:
+      - exporter-network
+
+  # Example: Your enhance-indexing-s3-exporter service
+  # This is a placeholder - adjust based on your deployment
+  exporter:
+    build:
+      context: ..
+      dockerfile: dockerfiles/otelcol.Dockerfile
+    volumes:
+      - ./exporter-config-with-metrics.yaml:/etc/otel-collector-config.yaml
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - HONEYCOMB_API_KEY=${HONEYCOMB_API_KEY}
+      - HONEYCOMB_API_SECRET=${HONEYCOMB_API_SECRET}
+    depends_on:
+      - otel-collector
+    networks:
+      - exporter-network
+
+networks:
+  exporter-network:
+    driver: bridge
