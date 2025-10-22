@@ -15,12 +15,6 @@ const (
 	instrumentationScopeName = "github.com/honeycombio/enhance-indexing-s3-exporter"
 )
 
-// Config interface to avoid circular dependencies
-type Config interface {
-	GetMarshalerName() awss3exporter.MarshalerType
-	GetAPIEndpoint() string
-}
-
 // ExporterMetrics holds OpenTelemetry metrics for the exporter with distinct instrumentation scope
 type ExporterMetrics struct {
 	// OpenTelemetry metrics instruments with distinct scope
@@ -34,7 +28,7 @@ type ExporterMetrics struct {
 }
 
 // NewExporterMetrics creates a new ExporterMetrics with OpenTelemetry instrumentation
-func NewExporterMetrics(config Config) (*ExporterMetrics, error) {
+func NewExporterMetrics(marshalerType awss3exporter.MarshalerType, apiEndpoint string) (*ExporterMetrics, error) {
 	// Create meter with distinct instrumentation scope
 	meter := otel.Meter(instrumentationScopeName)
 
@@ -71,12 +65,12 @@ func NewExporterMetrics(config Config) (*ExporterMetrics, error) {
 		return nil, fmt.Errorf("failed to create log bytes counter: %w", err)
 	}
 
-	// Pre-compute attributes from config to avoid allocating on every metric call
+	// Pre-compute attributes from parameters to avoid allocating on every metric call
 	attrs := []attribute.KeyValue{
-		attribute.String("marshaler", string(config.GetMarshalerName())),
+		attribute.String("marshaler", string(marshalerType)),
 	}
-	if config.GetAPIEndpoint() != "" {
-		attrs = append(attrs, attribute.String("api_endpoint", config.GetAPIEndpoint()))
+	if apiEndpoint != "" {
+		attrs = append(attrs, attribute.String("api_endpoint", apiEndpoint))
 	}
 
 	return &ExporterMetrics{

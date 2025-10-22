@@ -9,27 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockConfig implements the Config interface for testing
-type mockConfig struct {
-	MarshalerName awss3exporter.MarshalerType
-	APIEndpoint   string
-}
-
-func (c *mockConfig) GetMarshalerName() awss3exporter.MarshalerType {
-	return c.MarshalerName
-}
-
-func (c *mockConfig) GetAPIEndpoint() string {
-	return c.APIEndpoint
-}
-
 func TestNewExporterMetrics(t *testing.T) {
-	config := &mockConfig{
-		MarshalerName: awss3exporter.OtlpJSON,
-		APIEndpoint:   "http://localhost:8086",
-	}
-
-	metrics, err := NewExporterMetrics(config)
+	metrics, err := NewExporterMetrics(awss3exporter.OtlpJSON, "http://localhost:8086")
 	require.NoError(t, err)
 	require.NotNil(t, metrics)
 
@@ -46,12 +27,7 @@ func TestNewExporterMetrics(t *testing.T) {
 }
 
 func TestNewExporterMetricsWithoutAPIEndpoint(t *testing.T) {
-	config := &mockConfig{
-		MarshalerName: awss3exporter.OtlpProto,
-		APIEndpoint:   "",
-	}
-
-	metrics, err := NewExporterMetrics(config)
+	metrics, err := NewExporterMetrics(awss3exporter.OtlpProto, "")
 	require.NoError(t, err)
 	require.NotNil(t, metrics)
 
@@ -62,11 +38,7 @@ func TestNewExporterMetricsWithoutAPIEndpoint(t *testing.T) {
 
 func TestExporterMetricsThreadSafety(t *testing.T) {
 	// Test that metrics creation and concurrent recording works without panics
-	config := &mockConfig{
-		MarshalerName: awss3exporter.OtlpJSON,
-		APIEndpoint:   "http://localhost:8086",
-	}
-	metrics, err := NewExporterMetrics(config)
+	metrics, err := NewExporterMetrics(awss3exporter.OtlpJSON, "http://localhost:8086")
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -101,11 +73,7 @@ func TestExporterMetricsThreadSafety(t *testing.T) {
 }
 
 func TestAddSpanMetrics(t *testing.T) {
-	config := &mockConfig{
-		MarshalerName: awss3exporter.OtlpJSON,
-		APIEndpoint:   "http://localhost:8086",
-	}
-	metrics, err := NewExporterMetrics(config)
+	metrics, err := NewExporterMetrics(awss3exporter.OtlpJSON, "http://localhost:8086")
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -118,11 +86,7 @@ func TestAddSpanMetrics(t *testing.T) {
 }
 
 func TestAddLogMetrics(t *testing.T) {
-	config := &mockConfig{
-		MarshalerName: awss3exporter.OtlpJSON,
-		APIEndpoint:   "http://localhost:8086",
-	}
-	metrics, err := NewExporterMetrics(config)
+	metrics, err := NewExporterMetrics(awss3exporter.OtlpJSON, "http://localhost:8086")
 	require.NoError(t, err)
 
 	ctx := context.Background()

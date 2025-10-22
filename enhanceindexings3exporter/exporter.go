@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal/metrics"
+	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal/exporter_metrics"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -107,8 +107,8 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
-	exporterMetrics, err := metrics.NewExporterMetrics(cfg)
+	// Create metrics with OpenTelemetry instrumentation, passing marshaler type and API endpoint
+	exporterMetrics, err := metrics.NewExporterMetrics(cfg.MarshalerName, cfg.APIEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
 	}
