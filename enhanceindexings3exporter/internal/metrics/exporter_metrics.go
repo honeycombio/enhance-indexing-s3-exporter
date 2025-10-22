@@ -1,9 +1,10 @@
-package enhanceindexings3exporter
+package metrics
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -13,6 +14,12 @@ const (
 	// instrumentationScopeName is the distinct scope name for indexer metrics
 	instrumentationScopeName = "github.com/honeycombio/enhance-indexing-s3-exporter"
 )
+
+// Config interface to avoid circular dependencies
+type Config interface {
+	GetMarshalerName() awss3exporter.MarshalerType
+	GetAPIEndpoint() string
+}
 
 // ExporterMetrics holds OpenTelemetry metrics for the exporter with distinct instrumentation scope
 type ExporterMetrics struct {
@@ -27,7 +34,7 @@ type ExporterMetrics struct {
 }
 
 // NewExporterMetrics creates a new ExporterMetrics with OpenTelemetry instrumentation
-func NewExporterMetrics(config *Config) (*ExporterMetrics, error) {
+func NewExporterMetrics(config Config) (*ExporterMetrics, error) {
 	// Create meter with distinct instrumentation scope
 	meter := otel.Meter(instrumentationScopeName)
 
@@ -66,10 +73,10 @@ func NewExporterMetrics(config *Config) (*ExporterMetrics, error) {
 
 	// Pre-compute attributes from config to avoid allocating on every metric call
 	attrs := []attribute.KeyValue{
-		attribute.String("marshaler", string(config.MarshalerName)),
+		attribute.String("marshaler", string(config.GetMarshalerName())),
 	}
-	if config.APIEndpoint != "" {
-		attrs = append(attrs, attribute.String("api_endpoint", config.APIEndpoint))
+	if config.GetAPIEndpoint() != "" {
+		attrs = append(attrs, attribute.String("api_endpoint", config.GetAPIEndpoint()))
 	}
 
 	return &ExporterMetrics{
@@ -105,10 +112,3 @@ func (m *ExporterMetrics) AddLogMetrics(ctx context.Context, count int64, bytes 
 
 // Note: OpenTelemetry counters are monotonic and cannot be reset.
 // They accumulate values over the lifetime of the application.
-
-// GetMetrics returns the metrics instance for the exporter
-// Note: Individual metric values cannot be read from OpenTelemetry counters.
-// Metrics are exported through the configured OpenTelemetry metrics pipeline.
-func (e *enhanceIndexingS3Exporter) GetMetrics() *ExporterMetrics {
-	return e.metrics
-}

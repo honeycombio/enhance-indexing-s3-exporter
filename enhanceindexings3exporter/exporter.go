@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
+	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal/metrics"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -50,7 +51,7 @@ type enhanceIndexingS3Exporter struct {
 	logger       *zap.Logger
 	s3Writer     S3WriterInterface
 	indexManager *IndexManager
-	metrics      *ExporterMetrics
+	metrics      *metrics.ExporterMetrics
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -107,7 +108,7 @@ func buildIndexesFromAttributes(
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
 	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
-	metrics, err := NewExporterMetrics(cfg)
+	exporterMetrics, err := metrics.NewExporterMetrics(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
 	}
@@ -116,7 +117,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		config:       cfg,
 		logger:       logger,
 		indexManager: indexManager,
-		metrics:      metrics,
+		metrics:      exporterMetrics,
 	}, nil
 }
 

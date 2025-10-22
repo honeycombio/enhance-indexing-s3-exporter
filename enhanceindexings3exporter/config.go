@@ -46,6 +46,16 @@ type Config struct {
 	IndexedFields []fieldName `mapstructure:"indexed_fields"`
 }
 
+// GetMarshalerName returns the marshaler name (for internal/metrics interface)
+func (c *Config) GetMarshalerName() awss3exporter.MarshalerType {
+	return c.MarshalerName
+}
+
+// GetAPIEndpoint returns the API endpoint (for internal/metrics interface)
+func (c *Config) GetAPIEndpoint() string {
+	return c.APIEndpoint
+}
+
 func (c *Config) Validate() error {
 	return c.ValidateWithClient(defaultHTTPClient)
 }
