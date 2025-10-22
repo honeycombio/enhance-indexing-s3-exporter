@@ -107,7 +107,7 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Create metrics with OpenTelemetry instrumentation, passing marshaler type and API endpoint
+	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
 	exporterMetrics, err := metrics.NewExporterMetrics(cfg.MarshalerName, cfg.APIEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
@@ -502,10 +502,13 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	e.logger.Info("Consuming traces", logFields...)
 
 	var marshaler ptrace.Marshaler
+	var spanBytes int64
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
 		marshaler = &ptrace.JSONMarshaler{}
 	} else {
-		marshaler = &ptrace.ProtoMarshaler{}
+		protoMarshaler := &ptrace.ProtoMarshaler{}
+		marshaler = protoMarshaler
+		spanBytes = int64(protoMarshaler.TracesSize(traces))
 	}
 
 	buf, err := marshaler.MarshalTraces(traces)
@@ -513,7 +516,11 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
-	spanBytes := int64(len(buf))
+	// For JSONMarshaler, calculate size from marshaled buffer
+	if spanBytes == 0 {
+		spanBytes = int64(len(buf))
+	}
+
 	e.logger.Info("Uploading traces",
 		zap.Int64("traceSpanCount", spanCount),
 		zap.Int64("traceSpanBytes", spanBytes))
@@ -541,12 +548,14 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming logs", logFields...)
-
+	var logBytes int64
 	var marshaler plog.Marshaler
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
 		marshaler = &plog.JSONMarshaler{}
 	} else {
-		marshaler = &plog.ProtoMarshaler{}
+		protoMarshaler := &plog.ProtoMarshaler{}
+		marshaler = protoMarshaler
+		logBytes = int64(protoMarshaler.LogsSize(logs))
 	}
 
 	buf, err := marshaler.MarshalLogs(logs)
@@ -554,7 +563,11 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return fmt.Errorf("failed to marshal logs: %w", err)
 	}
 
-	logBytes := int64(len(buf))
+	// For JSONMarshaler, calculate size from marshaled buffer
+	if logBytes == 0 {
+		logBytes = int64(len(buf))
+	}
+
 	e.logger.Info("Uploading logs",
 		zap.Int64("logRecordCount", logCount),
 		zap.Int64("logRecordBytes", logBytes))
