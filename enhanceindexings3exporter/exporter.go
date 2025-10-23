@@ -511,7 +511,7 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	spanCount := int64(traces.SpanCount())
-	logFields := []zap.Field{zap.Int64("logSpanCount", spanCount)}
+	logFields := []zap.Field{zap.Int64("spanCount", spanCount)}
 	if e.config.APIEndpoint != "" {
 		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
