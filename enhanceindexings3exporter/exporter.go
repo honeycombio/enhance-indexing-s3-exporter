@@ -528,8 +528,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		}
 		spanBytes = int64(len(buf))
 	} else {
-		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
 		buf, err = e.traceMarshaler.MarshalTraces(traces)
+		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
 		if err != nil {
 			return fmt.Errorf("failed to marshal traces: %w", err)
 		}
