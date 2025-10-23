@@ -5,9 +5,9 @@
 
 <!-- Describe what this PR changes and why. This can be a great place to include open questions, things you aren’t certain about, tradeoffs made, other solutions explored & why they weren't appropriate, and specific areas you want reviewers to focus on. -->
 
-## Asana Fixes
+## Linear Fixes
 
-<!-- Paste an Asana task URL to have this PR attached to it -->
+<!-- Paste an Linear task URL to have this PR attached to it -->
 
 ## How to Test
 
