@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal/exporter_metrics"
+	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -47,11 +47,13 @@ type IndexManager struct {
 }
 
 type enhanceIndexingS3Exporter struct {
-	config       *Config
-	logger       *zap.Logger
-	s3Writer     S3WriterInterface
-	indexManager *IndexManager
-	metrics      *metrics.ExporterMetrics
+	config         *Config
+	logger         *zap.Logger
+	s3Writer       S3WriterInterface
+	indexManager   *IndexManager
+	metrics        *metrics.ExporterMetrics
+	traceMarshaler ptrace.Marshaler
+	logMarshaler   plog.Marshaler
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -113,11 +115,25 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
 	}
 
+	// Initialize marshalers based on configured marshaler type
+	var traceMarshaler ptrace.Marshaler
+	var logMarshaler plog.Marshaler
+
+	if cfg.MarshalerName == awss3exporter.OtlpJSON {
+		traceMarshaler = &ptrace.JSONMarshaler{}
+		logMarshaler = &plog.JSONMarshaler{}
+	} else {
+		traceMarshaler = &ptrace.ProtoMarshaler{}
+		logMarshaler = &plog.ProtoMarshaler{}
+	}
+
 	return &enhanceIndexingS3Exporter{
-		config:       cfg,
-		logger:       logger,
-		indexManager: indexManager,
-		metrics:      exporterMetrics,
+		config:         cfg,
+		logger:         logger,
+		indexManager:   indexManager,
+		metrics:        exporterMetrics,
+		traceMarshaler: traceMarshaler,
+		logMarshaler:   logMarshaler,
 	}, nil
 }
 
@@ -501,24 +517,22 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 	e.logger.Info("Consuming traces", logFields...)
 
-	var marshaler ptrace.Marshaler
 	var spanBytes int64
+	var buf []byte
+	var err error
+
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		marshaler = &ptrace.JSONMarshaler{}
-	} else {
-		protoMarshaler := &ptrace.ProtoMarshaler{}
-		marshaler = protoMarshaler
-		spanBytes = int64(protoMarshaler.TracesSize(traces))
-	}
-
-	buf, err := marshaler.MarshalTraces(traces)
-	if err != nil {
-		return fmt.Errorf("failed to marshal traces: %w", err)
-	}
-
-	// For JSONMarshaler, calculate size from marshaled buffer
-	if spanBytes == 0 {
+		buf, err = e.traceMarshaler.MarshalTraces(traces)
+		if err != nil {
+			return fmt.Errorf("failed to marshal traces: %w", err)
+		}
 		spanBytes = int64(len(buf))
+	} else {
+		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
+		buf, err = e.traceMarshaler.MarshalTraces(traces)
+		if err != nil {
+			return fmt.Errorf("failed to marshal traces: %w", err)
+		}
 	}
 
 	e.logger.Info("Uploading traces",
@@ -548,24 +562,19 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming logs", logFields...)
-	var logBytes int64
-	var marshaler plog.Marshaler
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		marshaler = &plog.JSONMarshaler{}
-	} else {
-		protoMarshaler := &plog.ProtoMarshaler{}
-		marshaler = protoMarshaler
-		logBytes = int64(protoMarshaler.LogsSize(logs))
-	}
 
-	buf, err := marshaler.MarshalLogs(logs)
+	var logBytes int64
+	var buf []byte
+	var err error
+	if e.config.MarshalerName == awss3exporter.OtlpJSON {
+		buf, err = e.logMarshaler.MarshalLogs(logs)
+		logBytes = int64(len(buf))
+	} else {
+		buf, err = e.logMarshaler.MarshalLogs(logs)
+		logBytes = int64(e.logMarshaler.(*plog.ProtoMarshaler).LogsSize(logs))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to marshal logs: %w", err)
-	}
-
-	// For JSONMarshaler, calculate size from marshaled buffer
-	if logBytes == 0 {
-		logBytes = int64(len(buf))
 	}
 
 	e.logger.Info("Uploading logs",
