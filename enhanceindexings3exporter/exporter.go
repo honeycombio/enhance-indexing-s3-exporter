@@ -511,28 +511,24 @@ func (im *IndexManager) uploadBatch(ctx context.Context, batch *MinuteIndexBatch
 
 func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces ptrace.Traces) error {
 	spanCount := int64(traces.SpanCount())
-	logFields := []zap.Field{zap.Int64("spanCount", spanCount)}
+	logFields := []zap.Field{zap.Int64("logSpanCount", spanCount)}
 	if e.config.APIEndpoint != "" {
 		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming traces", logFields...)
 
-	var spanBytes int64
-	var buf []byte
-	var err error
+	// Marshal the traces
+	buf, err := e.traceMarshaler.MarshalTraces(traces)
+	if err != nil {
+		return fmt.Errorf("failed to marshal traces: %w", err)
+	}
 
+	// Calculate the size of the traces in bytes
+	var spanBytes int64
 	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		buf, err = e.traceMarshaler.MarshalTraces(traces)
-		if err != nil {
-			return fmt.Errorf("failed to marshal traces: %w", err)
-		}
 		spanBytes = int64(len(buf))
 	} else {
-		buf, err = e.traceMarshaler.MarshalTraces(traces)
 		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
-		if err != nil {
-			return fmt.Errorf("failed to marshal traces: %w", err)
-		}
 	}
 
 	e.logger.Info("Uploading traces",
@@ -563,18 +559,18 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 	e.logger.Info("Consuming logs", logFields...)
 
-	var logBytes int64
-	var buf []byte
-	var err error
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		buf, err = e.logMarshaler.MarshalLogs(logs)
-		logBytes = int64(len(buf))
-	} else {
-		buf, err = e.logMarshaler.MarshalLogs(logs)
-		logBytes = int64(e.logMarshaler.(*plog.ProtoMarshaler).LogsSize(logs))
-	}
+	// Marshal the logs
+	buf, err := e.logMarshaler.MarshalLogs(logs)
 	if err != nil {
 		return fmt.Errorf("failed to marshal logs: %w", err)
+	}
+
+	// Calculate the size of the logs in bytes
+	var logBytes int64
+	if e.config.MarshalerName == awss3exporter.OtlpJSON {
+		logBytes = int64(len(buf))
+	} else {
+		logBytes = int64(e.logMarshaler.(*plog.ProtoMarshaler).LogsSize(logs))
 	}
 
 	e.logger.Info("Uploading logs",
