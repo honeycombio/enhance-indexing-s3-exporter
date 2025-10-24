@@ -38,6 +38,7 @@ type Config struct {
 	// APISecret is the Management API Secret associated with the Honeycomb account.
 	APIKey    configopaque.String `mapstructure:"api_key"`
 	APISecret configopaque.String `mapstructure:"api_secret"`
+	TeamSlug  string              `mapstructure:"team_slug"`
 
 	// API URL to use (defaults to https://api.honeycomb.io).
 	APIEndpoint string `mapstructure:"api_endpoint"`
@@ -85,7 +86,7 @@ func (c *Config) ValidateWithClient(client HTTPClient) error {
 		}
 	}
 
-	if err := validateManagementKeyWithClient(c.APIEndpoint, string(c.APIKey), string(c.APISecret), client); err != nil {
+	if err := validateManagementKeyWithClient(c, client); err != nil {
 		return err
 	}
 
@@ -187,24 +188,24 @@ func validateHostname(hostname string) error {
 	return nil
 }
 
-func validateManagementKey(apiEndpoint string, managementKey string, managementSecret string) error {
-	return validateManagementKeyWithClient(apiEndpoint, managementKey, managementSecret, defaultHTTPClient)
+func validateManagementKey(cfg *Config) error {
+	return validateManagementKeyWithClient(cfg, defaultHTTPClient)
 }
 
-func validateManagementKeyWithClient(apiEndpoint string, managementKey string, managementSecret string, client HTTPClient) error {
+func validateManagementKeyWithClient(cfg *Config, client HTTPClient) error {
 	// All three must be provided
-	if apiEndpoint == "" || managementKey == "" || managementSecret == "" {
+	if cfg.APIEndpoint == "" || cfg.APIKey == "" || cfg.APISecret == "" {
 		return fmt.Errorf("api_endpoint, management_key, and management_secret must all be provided together")
 	}
 
 	// Skip API validation for local development
-	if isLocalApiEndpoint(apiEndpoint) {
-		fmt.Printf("Skipping API validation for local URL: %s\n", apiEndpoint)
+	if isLocalApiEndpoint(cfg.APIEndpoint) {
+		fmt.Printf("Skipping API validation for local URL: %s\n", cfg.APIEndpoint)
 		return nil
 	}
 
 	// Construct the auth endpoint URL
-	authURL := fmt.Sprintf("%s/2/auth", apiEndpoint)
+	authURL := fmt.Sprintf("%s/2/auth", cfg.APIEndpoint)
 
 	// Create request
 	req, err := http.NewRequest("GET", authURL, nil)
@@ -213,7 +214,7 @@ func validateManagementKeyWithClient(apiEndpoint string, managementKey string, m
 	}
 
 	// Set authorization header
-	req.Header.Set("Authorization", "Bearer "+managementKey+":"+managementSecret)
+	req.Header.Set("Authorization", "Bearer "+string(cfg.APIKey)+":"+string(cfg.APISecret))
 
 	// Make the request
 	resp, err := client.Do(req)
@@ -238,14 +239,15 @@ func validateManagementKeyWithClient(apiEndpoint string, managementKey string, m
 		if authResponse.Data.Attributes.Disabled {
 			return fmt.Errorf("management key is disabled")
 		}
-		// TODO: change when we adjust the scope name to the enhance indexing scope name
-		if !slices.Contains(authResponse.Data.Attributes.Scopes, "bulk-ingest:write") {
+		if !slices.Contains(authResponse.Data.Attributes.Scopes, "enhance:write") {
 			return fmt.Errorf("management key does not have the required scopes")
 		}
 
 		if authResponse.Included[0].Attributes.Slug == "" {
 			return fmt.Errorf("auth response did not contain valid team slug")
 		}
+
+		cfg.TeamSlug = authResponse.Included[0].Attributes.Slug
 
 		return nil
 	case http.StatusUnauthorized:

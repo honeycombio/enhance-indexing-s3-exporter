@@ -135,7 +135,7 @@ func TestManagementKeyValidation(t *testing.T) {
 				"data": {
 					"attributes": {
 						"disabled": false,
-						"scopes": ["bulk-ingest:write"]
+						"scopes": ["enhance:write"]
 					}
 				},
 				"included": [{
@@ -175,11 +175,17 @@ func TestManagementKeyValidation(t *testing.T) {
 				}
 			}
 
+			cfg := &Config{
+				APIEndpoint: tt.apiEndpoint,
+				APIKey:      configopaque.String(tt.managementKey),
+				APISecret:   configopaque.String(tt.managementSecret),
+			}
+
 			var err error
 			if client != nil {
-				err = validateManagementKeyWithClient(tt.apiEndpoint, tt.managementKey, tt.managementSecret, client)
+				err = validateManagementKeyWithClient(cfg, client)
 			} else {
-				err = validateManagementKey(tt.apiEndpoint, tt.managementKey, tt.managementSecret)
+				err = validateManagementKey(cfg)
 			}
 
 			if tt.expectError {
@@ -529,7 +535,7 @@ func TestConfigValidation(t *testing.T) {
 						"data": {
 							"attributes": {
 								"disabled": false,
-								"scopes": ["bulk-ingest:write"]
+								"scopes": ["enhance:write"]
 							}
 						},
 						"included": [{

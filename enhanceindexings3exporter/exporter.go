@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -47,13 +46,19 @@ type IndexManager struct {
 }
 
 type enhanceIndexingS3Exporter struct {
-	config         *Config
-	logger         *zap.Logger
-	s3Writer       S3WriterInterface
-	indexManager   *IndexManager
-	metrics        *metrics.ExporterMetrics
-	traceMarshaler ptrace.Marshaler
-	logMarshaler   plog.Marshaler
+	config              *Config
+	logger              *zap.Logger
+	s3Writer            S3WriterInterface
+	indexManager        *IndexManager
+	traceMarshaler      ptrace.Marshaler
+	logMarshaler        plog.Marshaler
+	standaloneMode      bool
+	metricsTicker       *time.Ticker
+	metricsStopChan     chan struct{}
+	metricsShutdownOnce sync.Once
+	usageTraces         usageData
+	usageLogs           usageData
+	usageMutex          sync.Mutex
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -109,12 +114,6 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
-	exporterMetrics, err := metrics.NewExporterMetrics(cfg.MarshalerName, cfg.APIEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
-	}
-
 	// Initialize marshalers based on configured marshaler type
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
@@ -131,7 +130,6 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		config:         cfg,
 		logger:         logger,
 		indexManager:   indexManager,
-		metrics:        exporterMetrics,
 		traceMarshaler: traceMarshaler,
 		logMarshaler:   logMarshaler,
 	}, nil
@@ -211,9 +209,12 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
+	e.standaloneMode = !e.isHoneycombExtensionPresent(host)
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
-		zap.String("api_endpoint", e.config.APIEndpoint))
+		zap.String("api_endpoint", e.config.APIEndpoint),
+		zap.Bool("standalone_mode", e.standaloneMode),
+	)
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
@@ -245,10 +246,18 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 		}
 	}
 
+	if e.standaloneMode {
+		e.startMetricsCollection(ctx)
+	}
+
 	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
+	if e.standaloneMode {
+		e.stopMetricsCollection(ctx)
+	}
+
 	if e.indexManager != nil {
 		err := e.indexManager.shutdown(ctx)
 		if err != nil {
@@ -257,6 +266,23 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// isHoneycombExtensionPresent checks if the honeycombextension is present in the collector
+func (e *enhanceIndexingS3Exporter) isHoneycombExtensionPresent(host component.Host) bool {
+	if host == nil {
+		return false
+	}
+
+	extensions := host.GetExtensions()
+	for id := range extensions {
+		if id.Type().String() == "honeycomb" {
+			e.logger.Info("Honeycomb extension detected", zap.String("extension_id", id.String()))
+			return true
+		}
+	}
+
+	return false
 }
 
 // startTimer starts a timer that triggers every 30 seconds, which will check for
@@ -540,8 +566,10 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return err
 	}
 
-	// Record metrics with OpenTelemetry instrumentation using pre-configured attributes
-	e.metrics.AddSpanMetrics(ctx, spanCount, spanBytes)
+	// Record usage metrics if in standalone mode
+	if e.standaloneMode {
+		e.RecordTracesUsage(traces)
+	}
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
@@ -582,8 +610,10 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return err
 	}
 
-	// Record metrics with OpenTelemetry instrumentation using pre-configured attributes
-	e.metrics.AddLogMetrics(ctx, logCount, logBytes)
+	// Record usage metrics if in standalone mode
+	if e.standaloneMode {
+		e.RecordLogsUsage(logs)
+	}
 
 	// Add to index batch if enabled
 	if e.indexManager != nil {
