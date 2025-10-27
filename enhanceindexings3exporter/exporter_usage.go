@@ -36,14 +36,11 @@ type usageData struct {
 
 // UsageData wraps pmetric.Metrics and implements custom JSON marshaling
 type UsageData struct {
-	Metrics *pmetric.Metrics
+	Metrics pmetric.Metrics
 }
 
 func (u *UsageData) MarshalJSON() ([]byte, error) {
-	if u.Metrics == nil {
-		return []byte{}, nil
-	}
-	return pmetricJSONMarshaller.MarshalMetrics(*u.Metrics)
+	return pmetricJSONMarshaller.MarshalMetrics(u.Metrics)
 }
 
 func (u *UsageData) UnmarshalJSON(data []byte) error {
@@ -51,14 +48,14 @@ func (u *UsageData) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	u.Metrics = &metrics
+	u.Metrics = metrics
 	return nil
 }
 
 // CreateEnhanceIndexerUsageRecordAttributes represents the attributes for the usage record
 type CreateEnhanceIndexerUsageRecordAttributes struct {
-	S3Bucket     string     `json:"s3_bucket"`
-	S3FilePrefix string     `json:"s3_file_prefix"`
+	S3Bucket     string     `json:"s3Bucket"`
+	S3FilePrefix string     `json:"s3FilePrefix"`
 	UsageData    *UsageData `json:"usageData"`
 }
 
@@ -232,16 +229,16 @@ func (e *enhanceIndexingS3Exporter) stopMetricsCollection(ctx context.Context) {
 }
 
 // collectAndSendMetrics collects metrics and sends them to the configured endpoint
-// Metrics are sent to: POST {apiEndpoint}/2/teams/{teamSlug}/enhance_indexers
+// Metrics are sent to: POST {apiEndpoint}/2/teams/{teamSlug}/enhance_indexer_usage
 // Request format (JSONAPI):
 //
 //	{
 //	  "data": {
-//	    "type": "enhance_indexer_usage_record",
+//	    "type": "enhance_indexer_usage",
 //	    "id": "{exporter_id}",
 //	    "attributes": {
-//	      "s3_bucket": "{bucket_name}",
-//	      "s3_file_prefix": "{prefix}",
+//	      "s3Bucket": "{bucket_name}",
+//	      "s3FilePrefix": "{prefix}",
 //	      "usageData": {
 //	        // OpenTelemetry metrics in JSON format
 //	      }
@@ -261,13 +258,13 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 	// Construct the JSONAPI request
 	requestData := enhanceIndexerUsageRecordRequest{
 		Data: enhanceIndexerUsageRecordContents{
-			Type: "enhance_indexer_usage_record",
-			ID:   e.config.S3Uploader.S3Bucket,
+			Type: "enhance_indexer_usage",
+			ID:   "", // ID is optional for this endpoint
 			Attributes: CreateEnhanceIndexerUsageRecordAttributes{
 				S3Bucket:     e.config.S3Uploader.S3Bucket,
 				S3FilePrefix: e.config.S3Uploader.FilePrefix,
 				UsageData: &UsageData{
-					Metrics: &metrics,
+					Metrics: metrics,
 				},
 			},
 		},
@@ -279,7 +276,7 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 		return
 	}
 
-	url := fmt.Sprintf("%s/2/teams/%s/enhance_indexers", e.config.APIEndpoint, e.config.TeamSlug)
+	url := fmt.Sprintf("%s/2/teams/%s/enhance_indexer_usage", e.config.APIEndpoint, e.config.TeamSlug)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
 	if err != nil {
