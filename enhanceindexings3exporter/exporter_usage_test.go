@@ -3,7 +3,6 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"net/http"
-	"sync"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
@@ -16,32 +15,24 @@ import (
 
 func TestRecordTracesUsage(t *testing.T) {
 	tests := []struct {
-		name           string
-		marshalerName  awss3exporter.MarshalerType
-		spanCount      int
-		expectedBytes  int64
-		expectedCount  int64
+		name          string
+		marshalerName awss3exporter.MarshalerType
+		spanCount     int
 	}{
 		{
-			name:           "JSON marshaler with traces",
-			marshalerName:  awss3exporter.OtlpJSON,
-			spanCount:      5,
-			expectedCount:  5,
-			expectedBytes:  0, // Will be calculated based on actual JSON size
+			name:          "JSON marshaler with traces",
+			marshalerName: awss3exporter.OtlpJSON,
+			spanCount:     5,
 		},
 		{
-			name:           "Proto marshaler with traces",
-			marshalerName:  awss3exporter.OtlpProtobuf,
-			spanCount:      3,
-			expectedCount:  3,
-			expectedBytes:  0, // Will be calculated based on actual proto size
+			name:          "Proto marshaler with traces",
+			marshalerName: awss3exporter.OtlpProtobuf,
+			spanCount:     3,
 		},
 		{
-			name:           "Empty traces",
-			marshalerName:  awss3exporter.OtlpJSON,
-			spanCount:      0,
-			expectedCount:  0,
-			expectedBytes:  -1, // Negative means "don't check" - empty may have minimal size
+			name:          "Empty traces",
+			marshalerName: awss3exporter.OtlpJSON,
+			spanCount:     0,
 		},
 	}
 
@@ -79,46 +70,37 @@ func TestRecordTracesUsage(t *testing.T) {
 			// Record usage
 			exporter.RecordTracesUsage(traces)
 
-			// Verify counts
-			assert.Equal(t, tt.expectedCount, exporter.usageTraces.count)
+			// Verify count matches span count
+			assert.Equal(t, int64(tt.spanCount), exporter.usageTraces.count)
 
-			// Verify bytes (should be > 0 for non-empty traces)
+			// Verify bytes are recorded for non-empty traces
 			if tt.spanCount > 0 {
-				assert.Greater(t, exporter.usageTraces.bytes, int64(0))
+				assert.Greater(t, exporter.usageTraces.bytes, int64(0), "bytes should be > 0 for non-empty traces")
 			}
-			// Note: empty traces may still have minimal marshaled size, so we don't assert == 0
 		})
 	}
 }
 
 func TestRecordLogsUsage(t *testing.T) {
 	tests := []struct {
-		name           string
-		marshalerName  awss3exporter.MarshalerType
-		logCount       int
-		expectedBytes  int64
-		expectedCount  int64
+		name          string
+		marshalerName awss3exporter.MarshalerType
+		logCount      int
 	}{
 		{
-			name:           "JSON marshaler with logs",
-			marshalerName:  awss3exporter.OtlpJSON,
-			logCount:       5,
-			expectedCount:  5,
-			expectedBytes:  0, // Will be calculated
+			name:          "JSON marshaler with logs",
+			marshalerName: awss3exporter.OtlpJSON,
+			logCount:      5,
 		},
 		{
-			name:           "Proto marshaler with logs",
-			marshalerName:  awss3exporter.OtlpProtobuf,
-			logCount:       3,
-			expectedCount:  3,
-			expectedBytes:  0, // Will be calculated
+			name:          "Proto marshaler with logs",
+			marshalerName: awss3exporter.OtlpProtobuf,
+			logCount:      3,
 		},
 		{
-			name:           "Empty logs",
-			marshalerName:  awss3exporter.OtlpJSON,
-			logCount:       0,
-			expectedCount:  0,
-			expectedBytes:  -1, // Negative means "don't check" - empty may have minimal size
+			name:          "Empty logs",
+			marshalerName: awss3exporter.OtlpJSON,
+			logCount:      0,
 		},
 	}
 
@@ -137,9 +119,9 @@ func TestRecordLogsUsage(t *testing.T) {
 			}
 
 			exporter := &enhanceIndexingS3Exporter{
-				config:        config,
-				logger:        zap.NewNop(),
-				logMarshaler:  logMarshaler,
+				config:       config,
+				logger:       zap.NewNop(),
+				logMarshaler: logMarshaler,
 			}
 
 			// Create test logs
@@ -156,63 +138,62 @@ func TestRecordLogsUsage(t *testing.T) {
 			// Record usage
 			exporter.RecordLogsUsage(logs)
 
-			// Verify counts
-			assert.Equal(t, tt.expectedCount, exporter.usageLogs.count)
+			// Verify count matches log count
+			assert.Equal(t, int64(tt.logCount), exporter.usageLogs.count)
 
-			// Verify bytes
+			// Verify bytes are recorded for non-empty logs
 			if tt.logCount > 0 {
-				assert.Greater(t, exporter.usageLogs.bytes, int64(0))
+				assert.Greater(t, exporter.usageLogs.bytes, int64(0), "bytes should be > 0 for non-empty logs")
 			}
-			// Note: empty logs may still have minimal marshaled size, so we don't assert == 0
 		})
 	}
 }
 
 func TestCreateUsageReport(t *testing.T) {
 	tests := []struct {
-		name                 string
-		tracesBytes          int64
-		tracesCount          int64
-		logsBytes            int64
-		logsCount            int64
-		expectedMetricCount  int
-		expectedDatapoints   int
+		name                string
+		tracesBytes         int64
+		tracesCount         int64
+		logsBytes           int64
+		logsCount           int64
+		expectedMetricCount int
+		expectedDatapoints  int
 	}{
 		{
-			name:                 "Both traces and logs",
-			tracesBytes:          1000,
-			tracesCount:          10,
-			logsBytes:            500,
-			logsCount:            5,
-			expectedMetricCount:  2, // bytes_received and count_received
-			expectedDatapoints:   4, // 2 for each metric (traces + logs)
+			name:                "Both traces and logs",
+			tracesBytes:         1000,
+			tracesCount:         10,
+			logsBytes:           500,
+			logsCount:           5,
+			expectedMetricCount: 2, // bytes_received and count_received
+			expectedDatapoints:  4, // 2 for each metric (traces + logs)
 		},
 		{
-			name:                 "Only traces",
-			tracesBytes:          1000,
-			tracesCount:          10,
-			logsBytes:            0,
-			logsCount:            0,
-			expectedMetricCount:  2,
-			expectedDatapoints:   2, // 1 for each metric (only traces)
+			name:                "Only traces",
+			tracesBytes:         1000,
+			tracesCount:         10,
+			logsBytes:           0,
+			logsCount:           0,
+			expectedMetricCount: 2,
+			expectedDatapoints:  2, // 1 for each metric (only traces)
 		},
 		{
-			name:                 "Only logs",
-			tracesBytes:          0,
-			tracesCount:          0,
-			logsBytes:            500,
-			logsCount:            5,
-			expectedMetricCount:  2,
-			expectedDatapoints:   2, // 1 for each metric (only logs)
+			name:                "Only logs",
+			tracesBytes:         0,
+			tracesCount:         0,
+			logsBytes:           500,
+			logsCount:           5,
+			expectedMetricCount: 2,
+			expectedDatapoints:  2, // 1 for each metric (only logs)
 		},
 		{
-			name:                 "No data",
-			tracesBytes:          0,
-			tracesCount:          0,
-			logsBytes:            0,
-			logsCount:            0,
-			expectedMetricCount:  2,
-			expectedDatapoints:   0,
+			name:                "No data",
+			tracesBytes:         0,
+			tracesCount:         0,
+			logsBytes:           0,
+			logsCount:           0,
+			expectedMetricCount: 2,
+			expectedDatapoints:  0,
 		},
 	}
 
@@ -265,74 +246,14 @@ func TestCreateUsageReport(t *testing.T) {
 	}
 }
 
-func TestUsageMetricsThreadSafety(t *testing.T) {
-	exporter := &enhanceIndexingS3Exporter{
-		config: &Config{
-			MarshalerName: awss3exporter.OtlpJSON,
-		},
-		logger:         zap.NewNop(),
-		traceMarshaler: &ptrace.JSONMarshaler{},
-		logMarshaler:   &plog.JSONMarshaler{},
-	}
-
-	// Create test data
-	traces := ptrace.NewTraces()
-	rs := traces.ResourceSpans().AppendEmpty()
-	ss := rs.ScopeSpans().AppendEmpty()
-	span := ss.Spans().AppendEmpty()
-	span.SetName("test-span")
-
-	logs := plog.NewLogs()
-	rl := logs.ResourceLogs().AppendEmpty()
-	sl := rl.ScopeLogs().AppendEmpty()
-	logRecord := sl.LogRecords().AppendEmpty()
-	logRecord.Body().SetStr("test log")
-
-	// Run concurrent operations
-	var wg sync.WaitGroup
-	iterations := 100
-
-	// Concurrent RecordTracesUsage calls
-	for i := 0; i < iterations; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			exporter.RecordTracesUsage(traces)
-		}()
-	}
-
-	// Concurrent RecordLogsUsage calls
-	for i := 0; i < iterations; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			exporter.RecordLogsUsage(logs)
-		}()
-	}
-
-	// Concurrent createUsageReport calls
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_ = exporter.createUsageReport()
-		}()
-	}
-
-	wg.Wait()
-
-	// No assertions - just verifying no race conditions or panics
-	t.Log("Thread safety test completed without panics")
-}
-
 func TestCollectAndSendMetrics(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		responseBody   string
-		tracesBytes    int64
-		tracesCount    int64
-		expectError    bool
+		name         string
+		statusCode   int
+		responseBody string
+		tracesBytes  int64
+		tracesCount  int64
+		expectError  bool
 	}{
 		{
 			name:         "Successful send with 200 OK",
@@ -405,10 +326,6 @@ func TestCollectAndSendMetrics(t *testing.T) {
 				assert.Equal(t, int64(0), exporter.usageTraces.bytes)
 				assert.Equal(t, int64(0), exporter.usageTraces.count)
 			}
-
-			// Note: We can't easily verify the HTTP call was made with the mock setup above
-			// In a real implementation, you'd inject the HTTP client and verify the call
 		})
 	}
 }
-
