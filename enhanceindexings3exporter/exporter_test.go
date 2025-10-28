@@ -12,6 +12,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/config/configopaque"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -60,6 +61,9 @@ func TestConsumeTraces(t *testing.T) {
 					S3Bucket: "test-bucket",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-key"),
+				APISecret:     configopaque.String("test-secret"),
 				IndexedFields: []fieldName{"user.id"},
 			},
 			traces: createTestTraces(),
@@ -134,6 +138,9 @@ func TestConsumeLogs(t *testing.T) {
 					S3Bucket: "test-bucket",
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-key"),
+				APISecret:     configopaque.String("test-secret"),
 				IndexedFields: []fieldName{"customer.id"},
 			},
 			logs:           createTestLogs(),

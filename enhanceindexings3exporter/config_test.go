@@ -1,10 +1,7 @@
 package enhanceindexings3exporter
 
 import (
-	"bytes"
 	"context"
-	"io"
-	"net/http"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
@@ -20,25 +17,6 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
 )
-
-// Mock HTTP client for testing
-type mockHTTPClient struct {
-	response *http.Response
-	err      error
-}
-
-func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	return m.response, m.err
-}
-
-// Helper function to create a mock HTTP response
-func createMockResponse(statusCode int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: statusCode,
-		Body:       io.NopCloser(bytes.NewBufferString(body)),
-		Header:     make(http.Header),
-	}
-}
 
 func TestConfigMerging(t *testing.T) {
 	t.Run("session.id is always in indexed fields", func(t *testing.T) {
@@ -81,10 +59,10 @@ func TestConfigMerging(t *testing.T) {
 			ConfigProviderSettings: otelcol.ConfigProviderSettings{
 				ResolverSettings: confmap.ResolverSettings{
 					URIs: []string{
-						"yaml:exporters::test::api_key: test-api-key",
-						"yaml:exporters::test::api_secret: test-api-secret",
 						"yaml:exporters::test::indexed_fields: [abc]",
-						"yaml:exporters::test::api_endpoint: https://localhost",
+						"yaml:exporters::test::api_endpoint: https://api.honeycomb.io",
+						"yaml:exporters::test::api_key: test-key",
+						"yaml:exporters::test::api_secret: test-secret",
 						"yaml:exporters::test::s3uploader::s3_bucket: mybucket",
 						"yaml:exporters::test::s3uploader::s3_partition_format: year=%Y/month=%m/day=%d/hour=%H/minute=%M",
 						"yaml:exporters::test::s3uploader::compression: gzip",
@@ -113,91 +91,6 @@ func TestConfigMerging(t *testing.T) {
 		assert.NotNil(t, exp.config)
 		assert.Contains(t, exp.config.IndexedFields, fieldName("session.id"))
 	})
-}
-
-func TestManagementKeyValidation(t *testing.T) {
-	tests := []struct {
-		name             string
-		apiEndpoint      string
-		managementKey    string
-		managementSecret string
-		mockResponse     *http.Response
-		mockError        error
-		expectError      bool
-		errorMsg         string
-	}{
-		{
-			name:             "valid credentials with successful API response",
-			apiEndpoint:      "https://api.honeycomb.io",
-			managementKey:    "test-key",
-			managementSecret: "test-secret",
-			mockResponse: createMockResponse(200, `{
-				"data": {
-					"attributes": {
-						"disabled": false,
-						"scopes": ["enhance:write"]
-					}
-				},
-				"included": [{
-					"attributes": {
-						"slug": "test-team"
-					}
-				}]
-			}`),
-			expectError: false,
-		},
-		{
-			name:             "invalid API key",
-			apiEndpoint:      "https://api.honeycomb.io",
-			managementKey:    "invalid-key",
-			managementSecret: "invalid-secret",
-			mockResponse:     createMockResponse(401, ""),
-			expectError:      true,
-			errorMsg:         "invalid management API key",
-		},
-		{
-			name:             "missing credentials",
-			apiEndpoint:      "",
-			managementKey:    "",
-			managementSecret: "",
-			expectError:      true,
-			errorMsg:         "api_endpoint, management_key, and management_secret must all be provided together",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var client HTTPClient
-			if tt.mockResponse != nil || tt.mockError != nil {
-				client = &mockHTTPClient{
-					response: tt.mockResponse,
-					err:      tt.mockError,
-				}
-			}
-
-			cfg := &Config{
-				APIEndpoint: tt.apiEndpoint,
-				APIKey:      configopaque.String(tt.managementKey),
-				APISecret:   configopaque.String(tt.managementSecret),
-			}
-
-			var err error
-			if client != nil {
-				err = validateManagementKeyWithClient(cfg, client)
-			} else {
-				err = validateManagementKey(cfg)
-			}
-
-			if tt.expectError {
-				require.Error(t, err)
-				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
-				}
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
 }
 
 func TestConfigValidation(t *testing.T) {
@@ -463,22 +356,7 @@ func TestConfigValidation(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "management key without api_endpoint",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String("test-api-key"),
-				APIEndpoint:   "",
-			},
-			expectError: true,
-			errorMsg:    "api_endpoint, management_key, and management_secret must all be provided together",
-		},
-		{
-			name: "api_endpoint without management key",
+			name: "missing api credentials",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:            "us-east-1",
@@ -487,68 +365,17 @@ func TestConfigValidation(t *testing.T) {
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
 				APIKey:        configopaque.String(""),
-				APIEndpoint:   "https://api.example.com",
+				APISecret:     configopaque.String(""),
+				APIEndpoint:   "",
 			},
 			expectError: true,
-			errorMsg:    "api_endpoint, management_key, and management_secret must all be provided together",
-		},
-		{
-			name: "valid management key and api_endpoint for local development",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String("test-api-key"),
-				APISecret:     configopaque.String("test-api-secret"),
-				APIEndpoint:   "http://localhost:8086",
-			},
-			expectError: false,
-		},
-		{
-			name: "valid management key, secret and api_endpoint for production",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String("hcxmk_01234567890abcdef"),
-				APISecret:     configopaque.String("secret123"),
-				APIEndpoint:   "https://api.honeycomb.io",
-			},
-			expectError: false,
+			errorMsg:    "api_endpoint, api_key, and api_secret are required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var err error
-
-			// For tests that should pass and have API credentials, use a mock client
-			if !tt.expectError && tt.config.APIEndpoint != "" && tt.config.APIKey != "" && tt.config.APISecret != "" {
-				mockClient := &mockHTTPClient{
-					response: createMockResponse(200, `{
-						"data": {
-							"attributes": {
-								"disabled": false,
-								"scopes": ["enhance:write"]
-							}
-						},
-						"included": [{
-							"attributes": {
-								"slug": "test-team"
-							}
-						}]
-					}`),
-				}
-				err = tt.config.ValidateWithClient(mockClient)
-			} else {
-				err = tt.config.Validate()
-			}
+			err := tt.config.Validate()
 
 			if tt.expectError {
 				require.Error(t, err)

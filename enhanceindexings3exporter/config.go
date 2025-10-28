@@ -17,16 +17,6 @@ import (
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-// HTTPClient interface for testing
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
-// Default HTTP client
-var defaultHTTPClient HTTPClient = &http.Client{
-	Timeout: 10 * time.Second,
-}
-
 type Config struct {
 	QueueBatchConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
 	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
@@ -38,9 +28,7 @@ type Config struct {
 	// APISecret is the Management API Secret associated with the Honeycomb account.
 	APIKey    configopaque.String `mapstructure:"api_key"`
 	APISecret configopaque.String `mapstructure:"api_secret"`
-	TeamSlug  string              `mapstructure:"team_slug"`
-
-	// API URL to use (defaults to https://api.honeycomb.io).
+	// APIEndpoint is the Honeycomb API endpoint
 	APIEndpoint string `mapstructure:"api_endpoint"`
 
 	// IndexedFields is a list of fields to index.
@@ -48,10 +36,6 @@ type Config struct {
 }
 
 func (c *Config) Validate() error {
-	return c.ValidateWithClient(defaultHTTPClient)
-}
-
-func (c *Config) ValidateWithClient(client HTTPClient) error {
 	if c.S3Uploader.Region == "" {
 		return fmt.Errorf("region is required")
 	}
@@ -79,14 +63,11 @@ func (c *Config) ValidateWithClient(client HTTPClient) error {
 		return err
 	}
 
-	// Validate hostname and management key only if APIEndpoint is provided
-	if c.APIEndpoint != "" {
-		if err := validateHostname(c.APIEndpoint); err != nil {
-			return err
-		}
+	if c.APIEndpoint == "" || c.APIKey == "" || c.APISecret == "" {
+		return fmt.Errorf("api_endpoint, api_key, and api_secret are required")
 	}
 
-	if err := validateManagementKeyWithClient(c, client); err != nil {
+	if err := validateHostname(c.APIEndpoint); err != nil {
 		return err
 	}
 
@@ -107,28 +88,8 @@ func createDefaultConfig() component.Config {
 			RetryMode:         "standard",
 		},
 		MarshalerName: awss3exporter.OtlpProtobuf,
-		APIEndpoint:   "https://api.honeycomb.io",
-		APIKey:        configopaque.String(""),
 		IndexedFields: []fieldName{},
 	}
-}
-
-func isLocalApiEndpoint(apiEndpoint string) bool {
-	return strings.Contains(apiEndpoint, "localhost") || strings.Contains(apiEndpoint, "127.0.0.1") || strings.Contains(apiEndpoint, "minio") || strings.Contains(apiEndpoint, "0.0.0.0")
-}
-
-var authResponse struct {
-	Data struct {
-		Attributes struct {
-			Disabled bool     `json:"disabled"`
-			Scopes   []string `json:"scopes"`
-		} `json:"attributes"`
-	}
-	Included []struct {
-		Attributes struct {
-			Slug string `json:"slug"`
-		} `json:"attributes"`
-	} `json:"included"`
 }
 
 func validateS3PartitionFormat(format string) error {
@@ -188,73 +149,65 @@ func validateHostname(hostname string) error {
 	return nil
 }
 
-func validateManagementKey(cfg *Config) error {
-	return validateManagementKeyWithClient(cfg, defaultHTTPClient)
+var authResponse struct {
+	Data struct {
+		Attributes struct {
+			Disabled bool     `json:"disabled"`
+			Scopes   []string `json:"scopes"`
+		} `json:"attributes"`
+	}
+	Included []struct {
+		Attributes struct {
+			Slug string `json:"slug"`
+		} `json:"attributes"`
+	} `json:"included"`
 }
 
-func validateManagementKeyWithClient(cfg *Config, client HTTPClient) error {
-	// All three must be provided
-	if cfg.APIEndpoint == "" || cfg.APIKey == "" || cfg.APISecret == "" {
-		return fmt.Errorf("api_endpoint, management_key, and management_secret must all be provided together")
-	}
-
-	// Skip API validation for local development
-	if isLocalApiEndpoint(cfg.APIEndpoint) {
-		fmt.Printf("Skipping API validation for local URL: %s\n", cfg.APIEndpoint)
-		return nil
-	}
-
-	// Construct the auth endpoint URL
+func validateAPIKey(cfg *Config) (string, error) {
 	authURL := fmt.Sprintf("%s/2/auth", cfg.APIEndpoint)
 
-	// Create request
 	req, err := http.NewRequest("GET", authURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create auth request: %w", err)
+		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
-	// Set authorization header
 	req.Header.Set("Authorization", "Bearer "+string(cfg.APIKey)+":"+string(cfg.APISecret))
 
-	// Make the request
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to validate management API key: %w", err)
+		return "", fmt.Errorf("failed to validate API key: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check response status
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// API key and secret are valid, parse the response to get team ID
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("failed to read response body: %w", err)
+			return "", fmt.Errorf("failed to read response body: %w", err)
 		}
 
 		if err := json.Unmarshal(body, &authResponse); err != nil {
-			return fmt.Errorf("failed to parse auth response: %w", err)
+			return "", fmt.Errorf("failed to parse auth response: %w", err)
 		}
 
 		if authResponse.Data.Attributes.Disabled {
-			return fmt.Errorf("management key is disabled")
+			return "", fmt.Errorf("API key is disabled")
 		}
 		if !slices.Contains(authResponse.Data.Attributes.Scopes, "enhance:write") {
-			return fmt.Errorf("management key does not have the required scopes")
+			return "", fmt.Errorf("API key does not have the required scopes")
 		}
 
 		if authResponse.Included[0].Attributes.Slug == "" {
-			return fmt.Errorf("auth response did not contain valid team slug")
+			return "", fmt.Errorf("auth response did not contain valid team slug")
 		}
 
-		cfg.TeamSlug = authResponse.Included[0].Attributes.Slug
-
-		return nil
+		return authResponse.Included[0].Attributes.Slug, nil
 	case http.StatusUnauthorized:
-		return fmt.Errorf("invalid management API key")
+		return "", fmt.Errorf("invalid API key")
 	case http.StatusForbidden:
-		return fmt.Errorf("management API key does not have required permissions")
+		return "", fmt.Errorf("API key does not have required permissions")
 	default:
-		return fmt.Errorf("unexpected response from auth API: %d", resp.StatusCode)
+		return "", fmt.Errorf("unexpected response from auth API: %d", resp.StatusCode)
 	}
 }

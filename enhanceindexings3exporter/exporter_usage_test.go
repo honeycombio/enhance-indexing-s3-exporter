@@ -319,14 +319,14 @@ func TestCollectAndSendMetrics(t *testing.T) {
 					APIEndpoint: "https://api.honeycomb.io",
 					APIKey:      "test-key",
 					APISecret:   "test-secret",
-					TeamSlug:    tt.teamSlug,
 					S3Uploader: awss3exporter.S3UploaderConfig{
 						S3Bucket:   "test-bucket",
 						FilePrefix: "test-prefix",
 					},
 					MarshalerName: awss3exporter.OtlpJSON,
 				},
-				logger: zap.NewNop(),
+				logger:   zap.NewNop(),
+				teamSlug: tt.teamSlug,
 				usageTraces: usageData{
 					bytes: tt.tracesBytes,
 					count: tt.tracesCount,

@@ -255,14 +255,6 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 		return
 	}
 
-	// TeamSlug may be empty for local development configurations
-	// Skip sending metrics if TeamSlug is not populated
-	if e.config.TeamSlug == "" {
-		e.logger.Debug("Skipping metrics send: team slug not configured")
-		return
-	}
-
-	// Construct the JSONAPI request
 	requestData := enhanceIndexerUsageRecordRequest{
 		Data: enhanceIndexerUsageRecordContents{
 			Type: "enhance_indexer_usage",
@@ -283,7 +275,7 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 		return
 	}
 
-	url := fmt.Sprintf("%s/2/teams/%s/enhance_indexer_usage", e.config.APIEndpoint, e.config.TeamSlug)
+	url := fmt.Sprintf("%s/2/teams/%s/enhance_indexer_usage", e.config.APIEndpoint, e.teamSlug)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
 	if err != nil {

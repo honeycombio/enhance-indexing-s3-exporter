@@ -53,6 +53,7 @@ type enhanceIndexingS3Exporter struct {
 	traceMarshaler      ptrace.Marshaler
 	logMarshaler        plog.Marshaler
 	standaloneMode      bool
+	teamSlug            string
 	metricsTicker       *time.Ticker
 	metricsStopChan     chan struct{}
 	metricsShutdownOnce sync.Once
@@ -114,7 +115,6 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Initialize marshalers based on configured marshaler type
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
 
@@ -209,11 +209,18 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
+	teamSlug, err := validateAPIKey(e.config)
+	if err != nil {
+		return fmt.Errorf("failed to validate API credentials: %w", err)
+	}
+	e.teamSlug = teamSlug
+
 	e.standaloneMode = !e.isHoneycombExtensionPresent(host)
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
 		zap.String("api_endpoint", e.config.APIEndpoint),
 		zap.Bool("standalone_mode", e.standaloneMode),
+		zap.String("team_slug", e.teamSlug),
 	)
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
