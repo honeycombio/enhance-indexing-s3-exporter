@@ -253,6 +253,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 		responseBody string
 		tracesBytes  int64
 		tracesCount  int64
+		teamSlug     string
 		expectError  bool
 	}{
 		{
@@ -261,6 +262,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			responseBody: `{"status":"ok"}`,
 			tracesBytes:  1000,
 			tracesCount:  10,
+			teamSlug:     "test-team",
 			expectError:  false,
 		},
 		{
@@ -269,6 +271,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			responseBody: `{"status":"created"}`,
 			tracesBytes:  1000,
 			tracesCount:  10,
+			teamSlug:     "test-team",
 			expectError:  false,
 		},
 		{
@@ -277,6 +280,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			responseBody: "",
 			tracesBytes:  1000,
 			tracesCount:  10,
+			teamSlug:     "test-team",
 			expectError:  false,
 		},
 		{
@@ -285,6 +289,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			responseBody: `{"error":"bad request"}`,
 			tracesBytes:  1000,
 			tracesCount:  10,
+			teamSlug:     "test-team",
 			expectError:  true,
 		},
 		{
@@ -293,6 +298,16 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			responseBody: "",
 			tracesBytes:  0,
 			tracesCount:  0,
+			teamSlug:     "test-team",
+			expectError:  false,
+		},
+		{
+			name:         "Empty team slug skips send",
+			statusCode:   http.StatusOK,
+			responseBody: "",
+			tracesBytes:  1000,
+			tracesCount:  10,
+			teamSlug:     "",
 			expectError:  false,
 		},
 	}
@@ -304,7 +319,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 					APIEndpoint: "https://api.honeycomb.io",
 					APIKey:      "test-key",
 					APISecret:   "test-secret",
-					TeamSlug:    "test-team",
+					TeamSlug:    tt.teamSlug,
 					S3Uploader: awss3exporter.S3UploaderConfig{
 						S3Bucket:   "test-bucket",
 						FilePrefix: "test-prefix",
@@ -322,6 +337,7 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			exporter.collectAndSendMetrics(ctx)
 
 			// Verify usage was reset if metrics were sent
+			// When team slug is empty, metrics are cleared but not sent
 			if tt.tracesBytes > 0 {
 				assert.Equal(t, int64(0), exporter.usageTraces.bytes)
 				assert.Equal(t, int64(0), exporter.usageTraces.count)
