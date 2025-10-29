@@ -24,8 +24,7 @@ const (
 )
 
 var (
-	pmetricJSONUnmarshaller = pmetric.JSONUnmarshaler{}
-	pmetricJSONMarshaller   = pmetric.JSONMarshaler{}
+	pmetricJSONMarshaller = pmetric.JSONMarshaler{}
 )
 
 // usageData tracks bytes and count for a signal type
@@ -34,36 +33,27 @@ type usageData struct {
 	count int64
 }
 
-// UsageData wraps pmetric.Metrics and implements custom JSON marshaling
-type UsageData struct {
+// usageMetrics wraps pmetric.Metrics and implements custom JSON marshaling
+type usageMetrics struct {
 	Metrics pmetric.Metrics
 }
 
-func (u *UsageData) MarshalJSON() ([]byte, error) {
+func (u *usageMetrics) MarshalJSON() ([]byte, error) {
 	return pmetricJSONMarshaller.MarshalMetrics(u.Metrics)
 }
 
-func (u *UsageData) UnmarshalJSON(data []byte) error {
-	metrics, err := pmetricJSONUnmarshaller.UnmarshalMetrics(data)
-	if err != nil {
-		return err
-	}
-	u.Metrics = metrics
-	return nil
-}
-
-// CreateEnhanceIndexerUsageRecordAttributes represents the attributes for the usage record
-type CreateEnhanceIndexerUsageRecordAttributes struct {
-	S3Bucket     string     `json:"s3Bucket"`
-	S3FilePrefix string     `json:"s3FilePrefix"`
-	UsageData    *UsageData `json:"usageData"`
+// createEnhanceIndexerUsageRecordAttributes represents the attributes for the usage record
+type createEnhanceIndexerUsageRecordAttributes struct {
+	S3Bucket     string        `json:"s3Bucket"`
+	S3FilePrefix string        `json:"s3FilePrefix"`
+	UsageData    *usageMetrics `json:"usageData"`
 }
 
 // enhanceIndexerUsageRecordContents represents the data content for the request
 type enhanceIndexerUsageRecordContents struct {
-	Type       string                                    `json:"type"`
-	ID         string                                    `json:"id"`
-	Attributes CreateEnhanceIndexerUsageRecordAttributes `json:"attributes"`
+	Type       string                                 `json:"type"`
+	ID         string                                 `json:"id"`
+	Attributes createEnhanceIndexerUsageRecordAttributes `json:"attributes"`
 }
 
 // enhanceIndexerUsageRecordRequest represents the full JSONAPI request
@@ -259,10 +249,10 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 		Data: enhanceIndexerUsageRecordContents{
 			Type: "enhance_indexer_usage",
 			ID:   "", // ID is optional for this endpoint
-			Attributes: CreateEnhanceIndexerUsageRecordAttributes{
+			Attributes: createEnhanceIndexerUsageRecordAttributes{
 				S3Bucket:     e.config.S3Uploader.S3Bucket,
 				S3FilePrefix: e.config.S3Uploader.FilePrefix,
-				UsageData: &UsageData{
+				UsageData: &usageMetrics{
 					Metrics: metrics,
 				},
 			},
