@@ -356,7 +356,23 @@ func TestConfigValidation(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "missing api credentials",
+			name: "missing api_endpoint",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
+				APIEndpoint:   "",
+			},
+			expectError: true,
+			errorMsg:    "api_endpoint is required",
+		},
+		{
+			name: "missing api_key",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:            "us-east-1",
@@ -365,11 +381,27 @@ func TestConfigValidation(t *testing.T) {
 				},
 				MarshalerName: awss3exporter.OtlpProtobuf,
 				APIKey:        configopaque.String(""),
-				APISecret:     configopaque.String(""),
-				APIEndpoint:   "",
+				APISecret:     configopaque.String("test-api-secret"),
+				APIEndpoint:   "https://api.honeycomb.io",
 			},
 			expectError: true,
-			errorMsg:    "api_endpoint, api_key, and api_secret are required",
+			errorMsg:    "api_key is required",
+		},
+		{
+			name: "missing api_secret",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String(""),
+				APIEndpoint:   "https://api.honeycomb.io",
+			},
+			expectError: true,
+			errorMsg:    "api_secret is required",
 		},
 	}
 

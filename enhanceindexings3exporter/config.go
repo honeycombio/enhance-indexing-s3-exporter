@@ -63,12 +63,20 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if c.APIEndpoint == "" || c.APIKey == "" || c.APISecret == "" {
-		return fmt.Errorf("api_endpoint, api_key, and api_secret are required")
+	if c.APIEndpoint == "" {
+		return fmt.Errorf("api_endpoint is required")
 	}
 
 	if err := validateHostname(c.APIEndpoint); err != nil {
 		return err
+	}
+
+	if c.APIKey == "" {
+		return fmt.Errorf("api_key is required")
+	}
+
+	if c.APISecret == "" {
+		return fmt.Errorf("api_secret is required")
 	}
 
 	return nil
@@ -198,7 +206,7 @@ func validateAPIKey(cfg *Config) (string, error) {
 			return "", fmt.Errorf("API key does not have the required scopes")
 		}
 
-		if authResponse.Included[0].Attributes.Slug == "" {
+		if len(authResponse.Included) == 0 || authResponse.Included[0].Attributes.Slug == "" {
 			return "", fmt.Errorf("auth response did not contain valid team slug")
 		}
 
