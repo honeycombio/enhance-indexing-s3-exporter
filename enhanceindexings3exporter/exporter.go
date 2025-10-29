@@ -56,9 +56,7 @@ type enhanceIndexingS3Exporter struct {
 	protoLogMarshaler   *plog.ProtoMarshaler
 	standaloneMode      bool
 	teamSlug            string
-	metricsTicker       *time.Ticker
-	metricsStopChan     chan struct{}
-	metricsShutdownOnce sync.Once
+	done                chan struct{}
 	usageTraces         usageData
 	usageLogs           usageData
 	usageMutex          sync.Mutex
@@ -144,6 +142,7 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		logMarshaler:        logMarshaler,
 		protoTraceMarshaler: protoTraceMarshaler,
 		protoLogMarshaler:   protoLogMarshaler,
+		done:                make(chan struct{}),
 	}, nil
 }
 
@@ -266,7 +265,7 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 	}
 
 	if e.standaloneMode {
-		e.startMetricsCollection(ctx)
+		go e.startMetricsCollection(ctx)
 	}
 
 	return nil
@@ -274,8 +273,11 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 	if e.standaloneMode {
-		e.stopMetricsCollection(ctx)
+		// Send final metrics before shutdown
+		e.collectAndSendMetrics(ctx)
 	}
+
+	close(e.done)
 
 	if e.indexManager != nil {
 		err := e.indexManager.shutdown(ctx)

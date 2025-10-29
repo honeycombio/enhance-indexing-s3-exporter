@@ -147,43 +147,23 @@ func (e *enhanceIndexingS3Exporter) createUsageReport() pmetric.Metrics {
 	return m
 }
 
-// startMetricsCollection starts a goroutine that collects and sends metrics every 30 seconds
+// startMetricsCollection collects and sends metrics every 30 seconds
 func (e *enhanceIndexingS3Exporter) startMetricsCollection(ctx context.Context) {
 	e.logger.Info("Starting metrics collection for standalone mode")
 
-	e.metricsTicker = time.NewTicker(30 * time.Second)
-	e.metricsStopChan = make(chan struct{})
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-e.metricsStopChan:
-				return
-			case <-e.metricsTicker.C:
-				e.collectAndSendMetrics(ctx)
-			}
-		}
-	}()
-}
-
-// stopMetricsCollection stops the metrics collection ticker
-func (e *enhanceIndexingS3Exporter) stopMetricsCollection(ctx context.Context) {
-	e.metricsShutdownOnce.Do(func() {
-		if e.metricsTicker != nil {
-			e.logger.Info("Stopping metrics collection")
-
-			// Stop the ticker
-			e.metricsTicker.Stop()
-
-			// Signal the goroutine to stop
-			close(e.metricsStopChan)
-
-			// Send final metrics before shutdown
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-e.done:
+			return
+		case <-ticker.C:
 			e.collectAndSendMetrics(ctx)
 		}
-	})
+	}
 }
 
 // collectAndSendMetrics collects metrics and sends them to the configured endpoint
