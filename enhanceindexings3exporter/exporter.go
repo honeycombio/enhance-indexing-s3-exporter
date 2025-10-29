@@ -227,6 +227,11 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 	e.teamSlug = teamSlug
 
 	e.standaloneMode = !e.isHoneycombExtensionPresent(host)
+
+	if e.standaloneMode && e.teamSlug == "" {
+		return fmt.Errorf("team slug is required in standalone mode")
+	}
+
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
 		zap.String("api_endpoint", e.config.APIEndpoint),

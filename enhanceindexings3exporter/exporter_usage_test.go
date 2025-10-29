@@ -3,6 +3,7 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
@@ -13,19 +14,19 @@ import (
 
 func TestRecordTracesUsage(t *testing.T) {
 	tests := []struct {
-		name      string
-		bytes     int64
-		count     int64
+		name  string
+		bytes int64
+		count int64
 	}{
 		{
-			name:      "Traces with spans",
-			bytes:     1000,
-			count:     5,
+			name:  "Traces with spans",
+			bytes: 1000,
+			count: 5,
 		},
 		{
-			name:      "Empty traces",
-			bytes:     0,
-			count:     0,
+			name:  "Empty traces",
+			bytes: 0,
+			count: 0,
 		},
 	}
 
@@ -126,7 +127,7 @@ func TestCreateUsageReport(t *testing.T) {
 			tracesCount:         0,
 			logsBytes:           0,
 			logsCount:           0,
-			expectedMetricCount: 2,
+			expectedMetricCount: 0,
 			expectedDatapoints:  0,
 		},
 	}
@@ -248,9 +249,26 @@ func TestCollectAndSendMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			requestReceived := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestReceived = true
+
+				assert.Equal(t, "POST", r.Method)
+				assert.Equal(t, "/2/teams/"+tt.teamSlug+"/enhance_indexer_usage", r.URL.Path)
+
+				assert.Equal(t, "application/vnd.api+json", r.Header.Get("Content-Type"))
+				assert.Contains(t, r.Header.Get("Authorization"), "Bearer")
+
+				w.WriteHeader(tt.statusCode)
+				if tt.responseBody != "" {
+					_, _ = w.Write([]byte(tt.responseBody))
+				}
+			}))
+			defer server.Close()
+
 			exporter := &enhanceIndexingS3Exporter{
 				config: &Config{
-					APIEndpoint: "https://api.honeycomb.io",
+					APIEndpoint: server.URL,
 					APIKey:      "test-key",
 					APISecret:   "test-secret",
 					S3Uploader: awss3exporter.S3UploaderConfig{
@@ -270,12 +288,15 @@ func TestCollectAndSendMetrics(t *testing.T) {
 			ctx := context.Background()
 			exporter.collectAndSendMetrics(ctx)
 
-			// Verify usage was reset if metrics were sent
-			// When team slug is empty, metrics are cleared but not sent
-			if tt.tracesBytes > 0 {
+			// Verify usage was reset if metrics were created
+			if tt.tracesBytes > 0 || tt.tracesCount > 0 {
 				assert.Equal(t, int64(0), exporter.usageTraces.bytes)
 				assert.Equal(t, int64(0), exporter.usageTraces.count)
 			}
+
+			// Verify request was sent (or not) based on conditions
+			shouldSendRequest := tt.tracesBytes > 0 && tt.teamSlug != ""
+			assert.Equal(t, shouldSendRequest, requestReceived, "request sent mismatch")
 		})
 	}
 }

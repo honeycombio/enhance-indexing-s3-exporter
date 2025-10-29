@@ -47,8 +47,8 @@ type createEnhanceIndexerUsageRecordAttributes struct {
 
 // enhanceIndexerUsageRecordContents represents the data content for the request
 type enhanceIndexerUsageRecordContents struct {
-	Type       string                                 `json:"type"`
-	ID         string                                 `json:"id"`
+	Type       string                                    `json:"type"`
+	ID         string                                    `json:"id"`
 	Attributes createEnhanceIndexerUsageRecordAttributes `json:"attributes"`
 }
 
@@ -100,48 +100,48 @@ func (e *enhanceIndexingS3Exporter) createUsageReport() pmetric.Metrics {
 	sm := rm.ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(instrumentationScopeName)
 
-	// bytes_received metric
-	bytesMetric := sm.Metrics().AppendEmpty()
-	bytesMetric.SetName("bytes_received")
-	bytesSum := bytesMetric.SetEmptySum()
-	bytesSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	// Only create bytes_received metric if we have data
+	if tracesBytes > 0 || logsBytes > 0 {
+		bytesMetric := sm.Metrics().AppendEmpty()
+		bytesMetric.SetName("bytes_received")
+		bytesSum := bytesMetric.SetEmptySum()
+		bytesSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 
-	// Add traces datapoint
-	if tracesBytes > 0 {
-		dp := bytesSum.DataPoints().AppendEmpty()
-		dp.SetIntValue(tracesBytes)
-		dp.Attributes().PutStr("signal", "traces")
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		if tracesBytes > 0 {
+			dp := bytesSum.DataPoints().AppendEmpty()
+			dp.SetIntValue(tracesBytes)
+			dp.Attributes().PutStr("signal", "traces")
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		}
+
+		if logsBytes > 0 {
+			dp := bytesSum.DataPoints().AppendEmpty()
+			dp.SetIntValue(logsBytes)
+			dp.Attributes().PutStr("signal", "logs")
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		}
 	}
 
-	// Add logs datapoint
-	if logsBytes > 0 {
-		dp := bytesSum.DataPoints().AppendEmpty()
-		dp.SetIntValue(logsBytes)
-		dp.Attributes().PutStr("signal", "logs")
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-	}
+	// Only create count_received metric if we have data
+	if tracesCount > 0 || logsCount > 0 {
+		countMetric := sm.Metrics().AppendEmpty()
+		countMetric.SetName("count_received")
+		countSum := countMetric.SetEmptySum()
+		countSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
 
-	// count_received metric
-	countMetric := sm.Metrics().AppendEmpty()
-	countMetric.SetName("count_received")
-	countSum := countMetric.SetEmptySum()
-	countSum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+		if tracesCount > 0 {
+			dp := countSum.DataPoints().AppendEmpty()
+			dp.SetIntValue(tracesCount)
+			dp.Attributes().PutStr("signal", "traces")
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		}
 
-	// Add traces count datapoint
-	if tracesCount > 0 {
-		dp := countSum.DataPoints().AppendEmpty()
-		dp.SetIntValue(tracesCount)
-		dp.Attributes().PutStr("signal", "traces")
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-	}
-
-	// Add logs count datapoint
-	if logsCount > 0 {
-		dp := countSum.DataPoints().AppendEmpty()
-		dp.SetIntValue(logsCount)
-		dp.Attributes().PutStr("signal", "logs")
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		if logsCount > 0 {
+			dp := countSum.DataPoints().AppendEmpty()
+			dp.SetIntValue(logsCount)
+			dp.Attributes().PutStr("signal", "logs")
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		}
 	}
 
 	return m
@@ -190,6 +190,11 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 
 	if metrics.MetricCount() == 0 {
 		e.logger.Debug("No metrics to send")
+		return
+	}
+
+	if e.teamSlug == "" {
+		e.logger.Debug("No team slug configured, skipping metrics send")
 		return
 	}
 
