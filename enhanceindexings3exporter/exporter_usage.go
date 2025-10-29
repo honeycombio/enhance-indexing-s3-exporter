@@ -173,7 +173,7 @@ func (e *enhanceIndexingS3Exporter) startMetricsCollection(ctx context.Context) 
 //	{
 //	  "data": {
 //	    "type": "enhance_indexer_usage",
-//	    "id": "{exporter_id}",
+//	    "id": "enhance_indexing_s3_exporter",
 //	    "attributes": {
 //	      "s3Bucket": "{bucket_name}",
 //	      "s3FilePrefix": "{prefix}",
@@ -201,7 +201,7 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 	requestData := enhanceIndexerUsageRecordRequest{
 		Data: enhanceIndexerUsageRecordContents{
 			Type: "enhance_indexer_usage",
-			ID:   "", // ID is optional for this endpoint
+			ID:   typeStr,
 			Attributes: createEnhanceIndexerUsageRecordAttributes{
 				S3Bucket:     e.config.S3Uploader.S3Bucket,
 				S3FilePrefix: e.config.S3Uploader.FilePrefix,
