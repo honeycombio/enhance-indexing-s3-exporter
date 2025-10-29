@@ -52,6 +52,8 @@ type enhanceIndexingS3Exporter struct {
 	indexManager        *IndexManager
 	traceMarshaler      ptrace.Marshaler
 	logMarshaler        plog.Marshaler
+	protoTraceMarshaler *ptrace.ProtoMarshaler
+	protoLogMarshaler   *plog.ProtoMarshaler
 	standaloneMode      bool
 	teamSlug            string
 	metricsTicker       *time.Ticker
@@ -117,21 +119,31 @@ func buildIndexesFromAttributes(
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
+	var protoTraceMarshaler *ptrace.ProtoMarshaler
+	var protoLogMarshaler *plog.ProtoMarshaler
 
 	if cfg.MarshalerName == awss3exporter.OtlpJSON {
 		traceMarshaler = &ptrace.JSONMarshaler{}
 		logMarshaler = &plog.JSONMarshaler{}
+		// Create separate proto marshalers for usage metrics
+		protoTraceMarshaler = &ptrace.ProtoMarshaler{}
+		protoLogMarshaler = &plog.ProtoMarshaler{}
 	} else {
-		traceMarshaler = &ptrace.ProtoMarshaler{}
-		logMarshaler = &plog.ProtoMarshaler{}
+		// Reuse the same proto marshalers for both export and usage metrics
+		protoTraceMarshaler = &ptrace.ProtoMarshaler{}
+		protoLogMarshaler = &plog.ProtoMarshaler{}
+		traceMarshaler = protoTraceMarshaler
+		logMarshaler = protoLogMarshaler
 	}
 
 	return &enhanceIndexingS3Exporter{
-		config:         cfg,
-		logger:         logger,
-		indexManager:   indexManager,
-		traceMarshaler: traceMarshaler,
-		logMarshaler:   logMarshaler,
+		config:              cfg,
+		logger:              logger,
+		indexManager:        indexManager,
+		traceMarshaler:      traceMarshaler,
+		logMarshaler:        logMarshaler,
+		protoTraceMarshaler: protoTraceMarshaler,
+		protoLogMarshaler:   protoLogMarshaler,
 	}, nil
 }
 
@@ -556,13 +568,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
-	// Calculate the size of the traces in bytes
-	var spanBytes int64
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		spanBytes = int64(len(buf))
-	} else {
-		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
-	}
+	// Calculate canonical proto size for logging and usage metrics
+	spanBytes := int64(e.protoTraceMarshaler.TracesSize(traces))
 
 	e.logger.Info("Uploading traces",
 		zap.Int64("traceSpanCount", spanCount),
@@ -575,7 +582,7 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
-		e.RecordTracesUsage(traces)
+		e.RecordTracesUsage(spanBytes, spanCount)
 	}
 
 	// Add to index batch if enabled
@@ -600,13 +607,8 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return fmt.Errorf("failed to marshal logs: %w", err)
 	}
 
-	// Calculate the size of the logs in bytes
-	var logBytes int64
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		logBytes = int64(len(buf))
-	} else {
-		logBytes = int64(e.logMarshaler.(*plog.ProtoMarshaler).LogsSize(logs))
-	}
+	// Calculate canonical proto size for logging and usage metrics
+	logBytes := int64(e.protoLogMarshaler.LogsSize(logs))
 
 	e.logger.Info("Uploading logs",
 		zap.Int64("logRecordCount", logCount),
@@ -619,7 +621,7 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
-		e.RecordLogsUsage(logs)
+		e.RecordLogsUsage(logBytes, logCount)
 	}
 
 	// Add to index batch if enabled

@@ -9,13 +9,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 )
 
 const (
@@ -62,54 +58,26 @@ type enhanceIndexerUsageRecordRequest struct {
 }
 
 // RecordTracesUsage records traces usage for metrics reporting
-func (e *enhanceIndexingS3Exporter) RecordTracesUsage(td ptrace.Traces) {
-	var size int
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		marshaler := e.traceMarshaler.(*ptrace.JSONMarshaler)
-		buf, err := marshaler.MarshalTraces(td)
-		if err != nil {
-			e.logger.Error("Failed to marshal traces for size calculation", zap.Error(err))
-			return
-		}
-		size = len(buf)
-	} else {
-		marshaler := e.traceMarshaler.(*ptrace.ProtoMarshaler)
-		size = marshaler.TracesSize(td)
-	}
-
-	if size == 0 {
+func (e *enhanceIndexingS3Exporter) RecordTracesUsage(bytes int64, count int64) {
+	if bytes == 0 {
 		return
 	}
 
 	e.usageMutex.Lock()
-	e.usageTraces.bytes += int64(size)
-	e.usageTraces.count += int64(td.SpanCount())
+	e.usageTraces.bytes += bytes
+	e.usageTraces.count += count
 	e.usageMutex.Unlock()
 }
 
 // RecordLogsUsage records logs usage for metrics reporting
-func (e *enhanceIndexingS3Exporter) RecordLogsUsage(ld plog.Logs) {
-	var size int
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		marshaler := e.logMarshaler.(*plog.JSONMarshaler)
-		buf, err := marshaler.MarshalLogs(ld)
-		if err != nil {
-			e.logger.Error("Failed to marshal logs for size calculation", zap.Error(err))
-			return
-		}
-		size = len(buf)
-	} else {
-		marshaler := e.logMarshaler.(*plog.ProtoMarshaler)
-		size = marshaler.LogsSize(ld)
-	}
-
-	if size == 0 {
+func (e *enhanceIndexingS3Exporter) RecordLogsUsage(bytes int64, count int64) {
+	if bytes == 0 {
 		return
 	}
 
 	e.usageMutex.Lock()
-	e.usageLogs.bytes += int64(size)
-	e.usageLogs.count += int64(ld.LogRecordCount())
+	e.usageLogs.bytes += bytes
+	e.usageLogs.count += count
 	e.usageMutex.Unlock()
 }
 

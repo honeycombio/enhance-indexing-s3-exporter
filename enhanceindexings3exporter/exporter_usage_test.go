@@ -7,144 +7,78 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 )
 
 func TestRecordTracesUsage(t *testing.T) {
 	tests := []struct {
-		name          string
-		marshalerName awss3exporter.MarshalerType
-		spanCount     int
+		name      string
+		bytes     int64
+		count     int64
 	}{
 		{
-			name:          "JSON marshaler with traces",
-			marshalerName: awss3exporter.OtlpJSON,
-			spanCount:     5,
+			name:      "Traces with spans",
+			bytes:     1000,
+			count:     5,
 		},
 		{
-			name:          "Proto marshaler with traces",
-			marshalerName: awss3exporter.OtlpProtobuf,
-			spanCount:     3,
-		},
-		{
-			name:          "Empty traces",
-			marshalerName: awss3exporter.OtlpJSON,
-			spanCount:     0,
+			name:      "Empty traces",
+			bytes:     0,
+			count:     0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create exporter
-			config := &Config{
-				MarshalerName: tt.marshalerName,
-			}
-
-			var traceMarshaler ptrace.Marshaler
-			if tt.marshalerName == awss3exporter.OtlpJSON {
-				traceMarshaler = &ptrace.JSONMarshaler{}
-			} else {
-				traceMarshaler = &ptrace.ProtoMarshaler{}
-			}
-
 			exporter := &enhanceIndexingS3Exporter{
-				config:         config,
-				logger:         zap.NewNop(),
-				traceMarshaler: traceMarshaler,
-			}
-
-			// Create test traces
-			traces := ptrace.NewTraces()
-			if tt.spanCount > 0 {
-				rs := traces.ResourceSpans().AppendEmpty()
-				ss := rs.ScopeSpans().AppendEmpty()
-				for i := 0; i < tt.spanCount; i++ {
-					span := ss.Spans().AppendEmpty()
-					span.SetName("test-span")
-				}
+				logger: zap.NewNop(),
 			}
 
 			// Record usage
-			exporter.RecordTracesUsage(traces)
+			exporter.RecordTracesUsage(tt.bytes, tt.count)
 
-			// Verify count matches span count
-			assert.Equal(t, int64(tt.spanCount), exporter.usageTraces.count)
+			// Verify count matches expected
+			assert.Equal(t, tt.count, exporter.usageTraces.count)
 
-			// Verify bytes are recorded for non-empty traces
-			if tt.spanCount > 0 {
-				assert.Greater(t, exporter.usageTraces.bytes, int64(0), "bytes should be > 0 for non-empty traces")
-			}
+			// Verify bytes matches expected
+			assert.Equal(t, tt.bytes, exporter.usageTraces.bytes)
 		})
 	}
 }
 
 func TestRecordLogsUsage(t *testing.T) {
 	tests := []struct {
-		name          string
-		marshalerName awss3exporter.MarshalerType
-		logCount      int
+		name  string
+		bytes int64
+		count int64
 	}{
 		{
-			name:          "JSON marshaler with logs",
-			marshalerName: awss3exporter.OtlpJSON,
-			logCount:      5,
+			name:  "Logs with records",
+			bytes: 500,
+			count: 5,
 		},
 		{
-			name:          "Proto marshaler with logs",
-			marshalerName: awss3exporter.OtlpProtobuf,
-			logCount:      3,
-		},
-		{
-			name:          "Empty logs",
-			marshalerName: awss3exporter.OtlpJSON,
-			logCount:      0,
+			name:  "Empty logs",
+			bytes: 0,
+			count: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create exporter
-			config := &Config{
-				MarshalerName: tt.marshalerName,
-			}
-
-			var logMarshaler plog.Marshaler
-			if tt.marshalerName == awss3exporter.OtlpJSON {
-				logMarshaler = &plog.JSONMarshaler{}
-			} else {
-				logMarshaler = &plog.ProtoMarshaler{}
-			}
-
 			exporter := &enhanceIndexingS3Exporter{
-				config:       config,
-				logger:       zap.NewNop(),
-				logMarshaler: logMarshaler,
-			}
-
-			// Create test logs
-			logs := plog.NewLogs()
-			if tt.logCount > 0 {
-				rl := logs.ResourceLogs().AppendEmpty()
-				sl := rl.ScopeLogs().AppendEmpty()
-				for i := 0; i < tt.logCount; i++ {
-					logRecord := sl.LogRecords().AppendEmpty()
-					logRecord.Body().SetStr("test log")
-				}
+				logger: zap.NewNop(),
 			}
 
 			// Record usage
-			exporter.RecordLogsUsage(logs)
+			exporter.RecordLogsUsage(tt.bytes, tt.count)
 
-			// Verify count matches log count
-			assert.Equal(t, int64(tt.logCount), exporter.usageLogs.count)
+			// Verify count matches expected
+			assert.Equal(t, tt.count, exporter.usageLogs.count)
 
-			// Verify bytes are recorded for non-empty logs
-			if tt.logCount > 0 {
-				assert.Greater(t, exporter.usageLogs.bytes, int64(0), "bytes should be > 0 for non-empty logs")
-			}
+			// Verify bytes matches expected
+			assert.Equal(t, tt.bytes, exporter.usageLogs.bytes)
 		})
 	}
 }
