@@ -63,10 +63,10 @@ func (e *enhanceIndexingS3Exporter) RecordTracesUsage(bytes int64, count int64) 
 		return
 	}
 
-	e.usageMutex.Lock()
+	e.usageTracesMutex.Lock()
 	e.usageTraces.bytes += bytes
 	e.usageTraces.count += count
-	e.usageMutex.Unlock()
+	e.usageTracesMutex.Unlock()
 }
 
 // RecordLogsUsage records logs usage for metrics reporting
@@ -75,24 +75,27 @@ func (e *enhanceIndexingS3Exporter) RecordLogsUsage(bytes int64, count int64) {
 		return
 	}
 
-	e.usageMutex.Lock()
+	e.usageLogsMutex.Lock()
 	e.usageLogs.bytes += bytes
 	e.usageLogs.count += count
-	e.usageMutex.Unlock()
+	e.usageLogsMutex.Unlock()
 }
 
 // createUsageReport creates a pmetric.Metrics report from the current usage data
 // and resets the usage counters
 func (e *enhanceIndexingS3Exporter) createUsageReport() pmetric.Metrics {
 	// Copy current usage and reset
-	e.usageMutex.Lock()
+	e.usageTracesMutex.Lock()
 	tracesBytes := e.usageTraces.bytes
 	tracesCount := e.usageTraces.count
+	e.usageTraces = usageData{}
+	e.usageTracesMutex.Unlock()
+
+	e.usageLogsMutex.Lock()
 	logsBytes := e.usageLogs.bytes
 	logsCount := e.usageLogs.count
-	e.usageTraces = usageData{}
 	e.usageLogs = usageData{}
-	e.usageMutex.Unlock()
+	e.usageLogsMutex.Unlock()
 
 	// Build pmetric.Metrics
 	m := pmetric.NewMetrics()

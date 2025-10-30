@@ -52,14 +52,15 @@ type enhanceIndexingS3Exporter struct {
 	indexManager        *IndexManager
 	traceMarshaler      ptrace.Marshaler
 	logMarshaler        plog.Marshaler
-	protoTraceMarshaler *ptrace.ProtoMarshaler
-	protoLogMarshaler   *plog.ProtoMarshaler
+	traceUsageMarshaler *ptrace.ProtoMarshaler
+	logUsageMarshaler   *plog.ProtoMarshaler
 	standaloneMode      bool
 	teamSlug            string
 	done                chan struct{}
 	usageTraces         usageData
+	usageTracesMutex    sync.Mutex
 	usageLogs           usageData
-	usageMutex          sync.Mutex
+	usageLogsMutex      sync.Mutex
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -117,21 +118,12 @@ func buildIndexesFromAttributes(
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
-	var protoTraceMarshaler *ptrace.ProtoMarshaler
-	var protoLogMarshaler *plog.ProtoMarshaler
-
 	if cfg.MarshalerName == awss3exporter.OtlpJSON {
 		traceMarshaler = &ptrace.JSONMarshaler{}
 		logMarshaler = &plog.JSONMarshaler{}
-		// Create separate proto marshalers for usage metrics
-		protoTraceMarshaler = &ptrace.ProtoMarshaler{}
-		protoLogMarshaler = &plog.ProtoMarshaler{}
 	} else {
-		// Reuse the same proto marshalers for both export and usage metrics
-		protoTraceMarshaler = &ptrace.ProtoMarshaler{}
-		protoLogMarshaler = &plog.ProtoMarshaler{}
-		traceMarshaler = protoTraceMarshaler
-		logMarshaler = protoLogMarshaler
+		traceMarshaler = &ptrace.ProtoMarshaler{}
+		logMarshaler = &plog.ProtoMarshaler{}
 	}
 
 	return &enhanceIndexingS3Exporter{
@@ -140,8 +132,8 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		indexManager:        indexManager,
 		traceMarshaler:      traceMarshaler,
 		logMarshaler:        logMarshaler,
-		protoTraceMarshaler: protoTraceMarshaler,
-		protoLogMarshaler:   protoLogMarshaler,
+		traceUsageMarshaler: &ptrace.ProtoMarshaler{},
+		logUsageMarshaler:   &plog.ProtoMarshaler{},
 		done:                make(chan struct{}),
 	}, nil
 }
@@ -576,7 +568,7 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 
 	// Calculate canonical proto size for logging and usage metrics
-	spanBytes := int64(e.protoTraceMarshaler.TracesSize(traces))
+	spanBytes := int64(e.traceUsageMarshaler.TracesSize(traces))
 
 	e.logger.Info("Uploading traces",
 		zap.Int64("traceSpanCount", spanCount),
@@ -615,7 +607,7 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 
 	// Calculate canonical proto size for logging and usage metrics
-	logBytes := int64(e.protoLogMarshaler.LogsSize(logs))
+	logBytes := int64(e.logUsageMarshaler.LogsSize(logs))
 
 	e.logger.Info("Uploading logs",
 		zap.Int64("logRecordCount", logCount),
