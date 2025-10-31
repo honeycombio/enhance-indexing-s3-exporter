@@ -272,8 +272,8 @@ func TestCollectAndSendMetrics(t *testing.T) {
 					APIKey:      "test-key",
 					APISecret:   "test-secret",
 					S3Uploader: awss3exporter.S3UploaderConfig{
-						S3Bucket:   "test-bucket",
-						FilePrefix: "test-prefix",
+						S3Bucket: "test-bucket",
+						S3Prefix: "test-prefix",
 					},
 					MarshalerName: awss3exporter.OtlpJSON,
 				},

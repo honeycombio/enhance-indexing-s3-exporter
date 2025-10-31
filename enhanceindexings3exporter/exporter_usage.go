@@ -207,7 +207,7 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 			ID:   typeStr,
 			Attributes: createEnhanceIndexerUsageRecordAttributes{
 				S3Bucket:     e.config.S3Uploader.S3Bucket,
-				S3FilePrefix: e.config.S3Uploader.FilePrefix,
+				S3FilePrefix: e.config.S3Uploader.S3Prefix,
 				UsageData: &usageMetrics{
 					Metrics: metrics,
 				},
