@@ -253,12 +253,10 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	if e.indexManager != nil {
-		err := e.indexManager.start(ctx, e.s3Writer)
-		if err != nil {
-			e.logger.Error("Failed to start index manager", zap.Error(err))
-			return err
-		}
+	err = e.indexManager.start(ctx, e.s3Writer)
+	if err != nil {
+		e.logger.Error("Failed to start index manager", zap.Error(err))
+		return err
 	}
 
 	if e.standaloneMode {
@@ -276,12 +274,10 @@ func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
 
 	close(e.done)
 
-	if e.indexManager != nil {
-		err := e.indexManager.shutdown(ctx)
-		if err != nil {
-			e.logger.Error("Failed to shutdown index manager", zap.Error(err))
-			return err
-		}
+	err := e.indexManager.shutdown(ctx)
+	if err != nil {
+		e.logger.Error("Failed to shutdown index manager", zap.Error(err))
+		return err
 	}
 	return nil
 }
@@ -579,14 +575,12 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return err
 	}
 
+	// Add to index batch
+	e.indexManager.addTracesToIndex(traces, s3Key, minute)
+
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
 		e.RecordTracesUsage(spanBytes, spanCount)
-	}
-
-	// Add to index batch if enabled
-	if e.indexManager != nil {
-		e.indexManager.addTracesToIndex(traces, s3Key, minute)
 	}
 
 	return nil
@@ -618,14 +612,12 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return err
 	}
 
+	// Add to index batch
+	e.indexManager.addLogsToIndex(logs, s3Key, minute)
+
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
 		e.RecordLogsUsage(logBytes, logCount)
-	}
-
-	// Add to index batch if enabled
-	if e.indexManager != nil {
-		e.indexManager.addLogsToIndex(logs, s3Key, minute)
 	}
 
 	return nil

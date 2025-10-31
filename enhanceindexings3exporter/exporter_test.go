@@ -80,9 +80,7 @@ func TestConsumeTraces(t *testing.T) {
 			// Mock the s3Writer
 			mockWriter := createMockS3Writer(&tt.config.S3Uploader, tt.config.MarshalerName, logger)
 			exporter.s3Writer = mockWriter
-			if exporter.indexManager != nil {
-				exporter.indexManager.s3Writer = mockWriter
-			}
+			exporter.indexManager.s3Writer = mockWriter
 			mockUploader := mockWriter.uploader.(*mockS3Uploader)
 			// Get the current minute to match what WriteBuffer will return
 			currentMinute := time.Now().UTC().Minute()
@@ -158,9 +156,7 @@ func TestConsumeLogs(t *testing.T) {
 			// Mock the s3Writer
 			mockWriter := createMockS3Writer(&tt.config.S3Uploader, tt.config.MarshalerName, logger)
 			exporter.s3Writer = mockWriter
-			if exporter.indexManager != nil {
-				exporter.indexManager.s3Writer = mockWriter
-			}
+			exporter.indexManager.s3Writer = mockWriter
 			mockUploader := mockWriter.uploader.(*mockS3Uploader)
 			// Get the current minute to match what WriteBuffer will return
 			currentMinute := time.Now().UTC().Minute()
@@ -388,9 +384,7 @@ func TestUploadBatch(t *testing.T) {
 	// Mock the s3Writer
 	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
 	exporter.s3Writer = mockWriter
-	if exporter.indexManager != nil {
-		exporter.indexManager.s3Writer = mockWriter
-	}
+	exporter.indexManager.s3Writer = mockWriter
 	mockUploader := mockWriter.uploader.(*mockS3Uploader)
 	// Create test batch
 	batch := &MinuteIndexBatch{
@@ -438,9 +432,7 @@ func TestRolloverIndexes(t *testing.T) {
 	// Mock the s3Writer
 	mockWriter := createMockS3Writer(&config.S3Uploader, config.MarshalerName, logger)
 	exporter.s3Writer = mockWriter
-	if exporter.indexManager != nil {
-		exporter.indexManager.s3Writer = mockWriter
-	}
+	exporter.indexManager.s3Writer = mockWriter
 	mockUploader := mockWriter.uploader.(*mockS3Uploader)
 
 	// Initialize with old minute batch
