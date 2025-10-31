@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter/internal"
 	"github.com/honeycombio/enhance-indexing-s3-exporter/index"
 )
 
@@ -47,13 +46,21 @@ type IndexManager struct {
 }
 
 type enhanceIndexingS3Exporter struct {
-	config         *Config
-	logger         *zap.Logger
-	s3Writer       S3WriterInterface
-	indexManager   *IndexManager
-	metrics        *metrics.ExporterMetrics
-	traceMarshaler ptrace.Marshaler
-	logMarshaler   plog.Marshaler
+	config              *Config
+	logger              *zap.Logger
+	s3Writer            S3WriterInterface
+	indexManager        *IndexManager
+	traceMarshaler      ptrace.Marshaler
+	logMarshaler        plog.Marshaler
+	traceUsageMarshaler *ptrace.ProtoMarshaler
+	logUsageMarshaler   *plog.ProtoMarshaler
+	standaloneMode      bool
+	teamSlug            string
+	done                chan struct{}
+	usageTraces         usageData
+	usageTracesMutex    sync.Mutex
+	usageLogs           usageData
+	usageLogsMutex      sync.Mutex
 }
 
 // These are the fields that are automatically indexed. Note that trace id is
@@ -109,16 +116,8 @@ func buildIndexesFromAttributes(
 }
 
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
-	// Create metrics with OpenTelemetry instrumentation, passing config for attribute initialization
-	exporterMetrics, err := metrics.NewExporterMetrics(cfg.MarshalerName, cfg.APIEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter metrics: %w", err)
-	}
-
-	// Initialize marshalers based on configured marshaler type
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
-
 	if cfg.MarshalerName == awss3exporter.OtlpJSON {
 		traceMarshaler = &ptrace.JSONMarshaler{}
 		logMarshaler = &plog.JSONMarshaler{}
@@ -128,12 +127,14 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 	}
 
 	return &enhanceIndexingS3Exporter{
-		config:         cfg,
-		logger:         logger,
-		indexManager:   indexManager,
-		metrics:        exporterMetrics,
-		traceMarshaler: traceMarshaler,
-		logMarshaler:   logMarshaler,
+		config:              cfg,
+		logger:              logger,
+		indexManager:        indexManager,
+		traceMarshaler:      traceMarshaler,
+		logMarshaler:        logMarshaler,
+		traceUsageMarshaler: &ptrace.ProtoMarshaler{},
+		logUsageMarshaler:   &plog.ProtoMarshaler{},
+		done:                make(chan struct{}),
 	}, nil
 }
 
@@ -211,9 +212,24 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
+	teamSlug, err := validateAPIKey(e.config)
+	if err != nil {
+		return fmt.Errorf("failed to validate API credentials: %w", err)
+	}
+	e.teamSlug = teamSlug
+
+	e.standaloneMode = !e.isHoneycombExtensionPresent(host)
+
+	if e.standaloneMode && e.teamSlug == "" {
+		return fmt.Errorf("team slug is required in standalone mode")
+	}
+
 	e.logger.Info("Starting enhance indexing S3 exporter",
 		zap.String("region", e.config.S3Uploader.Region),
-		zap.String("api_endpoint", e.config.APIEndpoint))
+		zap.String("api_endpoint", e.config.APIEndpoint),
+		zap.Bool("standalone_mode", e.standaloneMode),
+		zap.String("team_slug", e.teamSlug),
+	)
 
 	awsConfig, err := config.LoadDefaultConfig(ctx, config.WithRegion(e.config.S3Uploader.Region))
 	if err != nil {
@@ -237,26 +253,50 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 
 	e.s3Writer = NewS3Writer(&e.config.S3Uploader, e.config.MarshalerName, s3Client, e.logger)
 
-	if e.indexManager != nil {
-		err := e.indexManager.start(ctx, e.s3Writer)
-		if err != nil {
-			e.logger.Error("Failed to start index manager", zap.Error(err))
-			return err
-		}
+	err = e.indexManager.start(ctx, e.s3Writer)
+	if err != nil {
+		e.logger.Error("Failed to start index manager", zap.Error(err))
+		return err
+	}
+
+	if e.standaloneMode {
+		go e.startMetricsCollection(ctx)
 	}
 
 	return nil
 }
 
 func (e *enhanceIndexingS3Exporter) shutdown(ctx context.Context) error {
-	if e.indexManager != nil {
-		err := e.indexManager.shutdown(ctx)
-		if err != nil {
-			e.logger.Error("Failed to shutdown index manager", zap.Error(err))
-			return err
-		}
+	if e.standaloneMode {
+		// Send final metrics before shutdown
+		e.collectAndSendMetrics(ctx)
+	}
+
+	close(e.done)
+
+	err := e.indexManager.shutdown(ctx)
+	if err != nil {
+		e.logger.Error("Failed to shutdown index manager", zap.Error(err))
+		return err
 	}
 	return nil
+}
+
+// isHoneycombExtensionPresent checks if the honeycombextension is present in the collector
+func (e *enhanceIndexingS3Exporter) isHoneycombExtensionPresent(host component.Host) bool {
+	if host == nil {
+		return false
+	}
+
+	extensions := host.GetExtensions()
+	for id := range extensions {
+		if id.Type().String() == "honeycomb" {
+			e.logger.Info("Honeycomb extension detected", zap.String("extension_id", id.String()))
+			return true
+		}
+	}
+
+	return false
 }
 
 // startTimer starts a timer that triggers every 30 seconds, which will check for
@@ -523,13 +563,8 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return fmt.Errorf("failed to marshal traces: %w", err)
 	}
 
-	// Calculate the size of the traces in bytes
-	var spanBytes int64
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		spanBytes = int64(len(buf))
-	} else {
-		spanBytes = int64(e.traceMarshaler.(*ptrace.ProtoMarshaler).TracesSize(traces))
-	}
+	// Calculate canonical proto size for logging and usage metrics
+	spanBytes := int64(e.traceUsageMarshaler.TracesSize(traces))
 
 	e.logger.Info("Uploading traces",
 		zap.Int64("traceSpanCount", spanCount),
@@ -540,12 +575,12 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 		return err
 	}
 
-	// Record metrics with OpenTelemetry instrumentation using pre-configured attributes
-	e.metrics.AddSpanMetrics(ctx, spanCount, spanBytes)
+	// Add to index batch
+	e.indexManager.addTracesToIndex(traces, s3Key, minute)
 
-	// Add to index batch if enabled
-	if e.indexManager != nil {
-		e.indexManager.addTracesToIndex(traces, s3Key, minute)
+	// Record usage metrics if in standalone mode
+	if e.standaloneMode {
+		e.RecordTracesUsage(spanBytes, spanCount)
 	}
 
 	return nil
@@ -565,13 +600,8 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return fmt.Errorf("failed to marshal logs: %w", err)
 	}
 
-	// Calculate the size of the logs in bytes
-	var logBytes int64
-	if e.config.MarshalerName == awss3exporter.OtlpJSON {
-		logBytes = int64(len(buf))
-	} else {
-		logBytes = int64(e.logMarshaler.(*plog.ProtoMarshaler).LogsSize(logs))
-	}
+	// Calculate canonical proto size for logging and usage metrics
+	logBytes := int64(e.logUsageMarshaler.LogsSize(logs))
 
 	e.logger.Info("Uploading logs",
 		zap.Int64("logRecordCount", logCount),
@@ -582,12 +612,12 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		return err
 	}
 
-	// Record metrics with OpenTelemetry instrumentation using pre-configured attributes
-	e.metrics.AddLogMetrics(ctx, logCount, logBytes)
+	// Add to index batch
+	e.indexManager.addLogsToIndex(logs, s3Key, minute)
 
-	// Add to index batch if enabled
-	if e.indexManager != nil {
-		e.indexManager.addLogsToIndex(logs, s3Key, minute)
+	// Record usage metrics if in standalone mode
+	if e.standaloneMode {
+		e.RecordLogsUsage(logBytes, logCount)
 	}
 
 	return nil
