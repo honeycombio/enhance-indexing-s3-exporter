@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -136,6 +137,10 @@ func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager 
 		logUsageMarshaler:   &plog.ProtoMarshaler{},
 		done:                make(chan struct{}),
 	}, nil
+}
+
+func (*enhanceIndexingS3Exporter) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
 }
 
 // NewIndexManager creates a new IndexManager

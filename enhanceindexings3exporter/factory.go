@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/zap"
@@ -58,7 +57,7 @@ func createTracesExporter(
 ) (exporter.Traces, error) {
 	config := cfg.(*Config)
 
-	set.Logger.Info("Creating traces exporter", zap.String("componentID", set.ID.String()))
+	set.Logger.Info("Creating traces exporter", zap.String("componentID", set.ID.String()), zap.Bool("MutatesData", false))
 
 	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
@@ -77,7 +76,7 @@ func createTracesExporter(
 		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewTracesQueueBatchSettings()),
 		exporterhelper.WithTimeout(config.TimeoutConfig),
 		exporterhelper.WithRetry(config.RetryConfig),
-		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithCapabilities(s3Exporter.Capabilities()),
 	)
 }
 
@@ -88,7 +87,7 @@ func createLogsExporter(
 ) (exporter.Logs, error) {
 	config := cfg.(*Config)
 
-	set.Logger.Info("Creating logs exporter", zap.String("componentID", set.ID.String()))
+	set.Logger.Info("Creating logs exporter", zap.String("componentID", set.ID.String()), zap.Bool("MutatesData", false))
 
 	indexManager := getOrCreateIndexManager(set.ID, config, set.Logger)
 
@@ -107,6 +106,6 @@ func createLogsExporter(
 		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewLogsQueueBatchSettings()),
 		exporterhelper.WithTimeout(config.TimeoutConfig),
 		exporterhelper.WithRetry(config.RetryConfig),
-		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		exporterhelper.WithCapabilities(s3Exporter.Capabilities()),
 	)
 }
