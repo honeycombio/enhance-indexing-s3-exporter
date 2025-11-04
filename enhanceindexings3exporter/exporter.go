@@ -29,13 +29,14 @@ type fieldS3Keys []string
 
 // MinuteIndexBatch holds index data for a one minute period
 type MinuteIndexBatch struct {
+	mutex        sync.RWMutex
 	minuteDir    string                                   // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
 	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys // field_name -> {field_value -> slice of s3 keys}
 }
 
 // IndexManager manages shared index state across multiple exporters
 type IndexManager struct {
-	mutex              sync.RWMutex
+	batchesMutex       sync.RWMutex
 	startOnce          sync.Once
 	shutdownOnce       sync.Once
 	minuteIndexBatches map[int]*MinuteIndexBatch
@@ -158,8 +159,8 @@ func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
 // by creating an empty MinuteIndexBatch with the given minute
 // and adding it to the index manager's minuteIndexBatches map
 func (im *IndexManager) ensureMinuteBatch(minute int) {
-	im.mutex.Lock()
-	defer im.mutex.Unlock()
+	im.batchesMutex.Lock()
+	defer im.batchesMutex.Unlock()
 	if _, ok := im.minuteIndexBatches[minute]; !ok {
 		im.minuteIndexBatches[minute] = &MinuteIndexBatch{
 			fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys),
@@ -190,21 +191,35 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 
 		// TODO figure out if we need to wait for the upload to finish before continuing
 
-		// Upload any remaining batch data
-		im.mutex.Lock()
-		defer im.mutex.Unlock()
+		// Get a snapshot of remaining batches
+		im.batchesMutex.RLock()
+		batchCount := len(im.minuteIndexBatches)
+		remainingBatches := make(map[int]*MinuteIndexBatch, batchCount)
+		for minute, batch := range im.minuteIndexBatches {
+			remainingBatches[minute] = batch
+		}
+		im.batchesMutex.RUnlock()
 
-		if len(im.minuteIndexBatches) > 0 {
-			im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
-			for minute, batch := range im.minuteIndexBatches {
+		// Upload any remaining batch data
+		if batchCount > 0 {
+			im.logger.Info("Uploading remaining index data", zap.Int("batchCount", batchCount))
+			for minute, batch := range remainingBatches {
+				// Lock the specific batch for reading during upload
+				batch.mutex.RLock()
 				err := im.uploadBatch(ctx, batch)
+				batch.mutex.RUnlock()
+
 				if err != nil {
 					im.logger.Error("Failed to upload remaining index data", zap.Error(err))
 					break
 				}
 
 				im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
+
+				// Remove from map
+				im.batchesMutex.Lock()
 				delete(im.minuteIndexBatches, minute)
+				im.batchesMutex.Unlock()
 			}
 		}
 	})
@@ -324,21 +339,35 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
 	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
 
-	// Check if there are any index batches that are ready to be uploaded
-	for minute, indexBatch := range im.minuteIndexBatches {
-		if im.readyToUpload(minute) {
-			im.mutex.RLock()
-			im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
-			err := im.uploadBatch(ctx, indexBatch)
-			im.mutex.RUnlock()
-			if err != nil {
-				im.logger.Error("Failed to upload index batch", zap.Error(err))
-				break
-			}
-
-			im.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
-			delete(im.minuteIndexBatches, minute)
+	// Get a snapshot of batches to upload
+	im.batchesMutex.RLock()
+	batchesToUpload := make(map[int]*MinuteIndexBatch)
+	for m, batch := range im.minuteIndexBatches {
+		if im.readyToUpload(m) {
+			batchesToUpload[m] = batch
 		}
+	}
+	im.batchesMutex.RUnlock()
+
+	// Upload each batch (can be done without holding batchesMutex)
+	for m, indexBatch := range batchesToUpload {
+		im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", m))
+
+		// Lock the specific batch for reading during upload
+		indexBatch.mutex.RLock()
+		err := im.uploadBatch(ctx, indexBatch)
+		indexBatch.mutex.RUnlock()
+
+		if err != nil {
+			im.logger.Error("Failed to upload index batch", zap.Error(err))
+			break
+		}
+
+		// Remove the uploaded batch from the map
+		im.logger.Info("Deleting index batch for the minute", zap.Int("minute", m))
+		im.batchesMutex.Lock()
+		delete(im.minuteIndexBatches, m)
+		im.batchesMutex.Unlock()
 	}
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
@@ -362,10 +391,15 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 	// Ensure the batch exists for this minute
 	im.ensureMinuteBatch(minute)
 
-	im.mutex.Lock()
-	defer im.mutex.Unlock()
-
+	// Get the batch with a read lock on the map
+	im.batchesMutex.RLock()
 	currentBatch := im.minuteIndexBatches[minute]
+	im.batchesMutex.RUnlock()
+
+	// Lock only this specific minute batch
+	currentBatch.mutex.Lock()
+	defer currentBatch.mutex.Unlock()
+
 	currentBatch.minuteDir = filepath.Dir(s3Key)
 
 	// Extract and add field values to current batch
@@ -419,10 +453,15 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 	// Ensure the batch exists for this minute
 	im.ensureMinuteBatch(minute)
 
-	im.mutex.Lock()
-	defer im.mutex.Unlock()
-
+	// Get the batch with a read lock on the map
+	im.batchesMutex.RLock()
 	currentBatch := im.minuteIndexBatches[minute]
+	im.batchesMutex.RUnlock()
+
+	// Lock only this specific minute batch
+	currentBatch.mutex.Lock()
+	defer currentBatch.mutex.Unlock()
+
 	currentBatch.minuteDir = filepath.Dir(s3Key)
 
 	// Extract and add field values to current batch
