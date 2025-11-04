@@ -33,6 +33,18 @@ type MinuteIndexBatch struct {
 	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys // field_name -> {field_value -> slice of s3 keys}
 }
 
+type tracesIndexPayload struct {
+	traces ptrace.Traces
+	s3key  string
+	minute int
+}
+
+type logsIndexPayload struct {
+	logs   plog.Logs
+	s3key  string
+	minute int
+}
+
 // IndexManager manages shared index state across multiple exporters
 type IndexManager struct {
 	mutex              sync.RWMutex
@@ -43,6 +55,8 @@ type IndexManager struct {
 	config             *Config
 	logger             *zap.Logger
 	s3Writer           S3WriterInterface
+	tracesChan         chan tracesIndexPayload
+	logsChan           chan logsIndexPayload
 }
 
 type enhanceIndexingS3Exporter struct {
@@ -151,6 +165,8 @@ func NewIndexManager(config *Config, logger *zap.Logger) *IndexManager {
 		minuteIndexBatches: make(map[int]*MinuteIndexBatch),
 		config:             config,
 		logger:             logger,
+		tracesChan:         make(chan tracesIndexPayload, 1000),
+		logsChan:           make(chan logsIndexPayload, 1000),
 	}
 }
 
@@ -209,6 +225,22 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 		}
 	})
 	return nil
+}
+
+func (im *IndexManager) addTraces(traces ptrace.Traces, s3Key string, minute int) {
+	im.tracesChan <- tracesIndexPayload{
+		traces: traces,
+		s3key:  s3Key,
+		minute: minute,
+	}
+}
+
+func (im *IndexManager) addLogs(logs plog.Logs, s3Key string, minute int) {
+	im.logsChan <- logsIndexPayload{
+		logs:   logs,
+		s3key:  s3Key,
+		minute: minute,
+	}
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
@@ -315,6 +347,12 @@ func (im *IndexManager) startTimer(ctx context.Context) {
 			case <-im.ticker.C:
 				// blocking so we don't have multiple rollovers running simultaneously
 				im.rolloverIndexes(ctx)
+			case payload := <-im.tracesChan:
+				im.logger.Info("adding spans to index", zap.Int("chan size", len(im.tracesChan)))
+				im.addTracesToIndex(payload.traces, payload.s3key, payload.minute)
+			case payload := <-im.logsChan:
+				im.logger.Info("adding logs to index", zap.Int("chan size", len(im.logsChan)))
+				im.addLogsToIndex(payload.logs, payload.s3key, payload.minute)
 			}
 		}
 	}()
@@ -576,7 +614,7 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 
 	// Add to index batch
-	e.indexManager.addTracesToIndex(traces, s3Key, minute)
+	e.indexManager.addTraces(traces, s3Key, minute)
 
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
@@ -613,7 +651,7 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 	}
 
 	// Add to index batch
-	e.indexManager.addLogsToIndex(logs, s3Key, minute)
+	e.indexManager.addLogs(logs, s3Key, minute)
 
 	// Record usage metrics if in standalone mode
 	if e.standaloneMode {
