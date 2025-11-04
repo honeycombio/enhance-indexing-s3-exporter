@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.uber.org/zap"
@@ -76,6 +77,7 @@ func createTracesExporter(
 		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewTracesQueueBatchSettings()),
 		exporterhelper.WithTimeout(config.TimeoutConfig),
 		exporterhelper.WithRetry(config.RetryConfig),
+		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 	)
 }
 
@@ -105,5 +107,6 @@ func createLogsExporter(
 		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewLogsQueueBatchSettings()),
 		exporterhelper.WithTimeout(config.TimeoutConfig),
 		exporterhelper.WithRetry(config.RetryConfig),
+		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 	)
 }
