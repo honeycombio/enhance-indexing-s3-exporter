@@ -25,17 +25,12 @@ import (
 
 type fieldName string
 type fieldValue string
-type fieldS3Keys map[string]struct{}
+type fieldS3Keys []string
 
 // MinuteIndexBatch holds index data for a one minute period
 type MinuteIndexBatch struct {
-	// minuteDir is the directory for the minute batch
-	// e.g. "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
-	minuteDir string
-	//fieldIndexes looks like:
-	// {field_name: {field_value: {s3_key: struct{}}}}
-	// e.g. {trace.trace_id: {1234567890: {traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00/traces_1234567890.binpb.gz: struct{}}}}
-	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys
+	minuteDir    string                                   // "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=00"
+	fieldIndexes map[fieldName]map[fieldValue]fieldS3Keys // field_name -> {field_value -> slice of s3 keys}
 }
 
 // IndexManager manages shared index state across multiple exporters
@@ -101,18 +96,20 @@ func buildIndexesFromAttributes(
 		}
 
 		// Remove the S3 key from the previous field index's value if it is present
-		if s3KeySet, ok := currentBatch.fieldIndexes[fn][previousFV]; ok && previousFV != "" {
-			delete(s3KeySet, s3Key)
-			if len(s3KeySet) == 0 {
+		if _, ok := currentBatch.fieldIndexes[fn][previousFV]; ok && previousFV != "" {
+			currentBatch.fieldIndexes[fn][previousFV] = slices.DeleteFunc(currentBatch.fieldIndexes[fn][previousFV], func(s string) bool {
+				return s == s3Key
+			})
+
+			if len(currentBatch.fieldIndexes[fn][previousFV]) == 0 {
 				delete(currentBatch.fieldIndexes[fn], previousFV)
 			}
 		}
 
-		// Add the S3 key to the field value index set
-		if currentBatch.fieldIndexes[fn][fv] == nil {
-			currentBatch.fieldIndexes[fn][fv] = make(fieldS3Keys)
+		// Append the S3 key to the field value index if it is not already present
+		if !slices.Contains(currentBatch.fieldIndexes[fn][fv], s3Key) {
+			currentBatch.fieldIndexes[fn][fv] = append(currentBatch.fieldIndexes[fn][fv], s3Key)
 		}
-		currentBatch.fieldIndexes[fn][fv][s3Key] = struct{}{}
 	}
 
 	return fv
@@ -402,11 +399,10 @@ func (im *IndexManager) addTracesToIndex(traces ptrace.Traces, s3Key string, min
 					currentBatch.fieldIndexes[traceIDFName] = map[fieldValue]fieldS3Keys{}
 				}
 
-				// Add the S3 key to the trace id field index set
-				if currentBatch.fieldIndexes[traceIDFName][traceIDFVal] == nil {
-					currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = make(fieldS3Keys)
+				// Append the S3 key to the trace id field index if it is not already present
+				if !slices.Contains(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key) {
+					currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = append(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key)
 				}
-				currentBatch.fieldIndexes[traceIDFName][traceIDFVal][s3Key] = struct{}{}
 			}
 		}
 	}
@@ -464,11 +460,10 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 						currentBatch.fieldIndexes[traceIDFName] = map[fieldValue]fieldS3Keys{}
 					}
 
-					// Add the S3 key to the trace id field index set
-					if currentBatch.fieldIndexes[traceIDFName][traceIDFVal] == nil {
-						currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = make(fieldS3Keys)
+					// Append the S3 key to the trace id field index if it is not already present
+					if !slices.Contains(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key) {
+						currentBatch.fieldIndexes[traceIDFName][traceIDFVal] = append(currentBatch.fieldIndexes[traceIDFName][traceIDFVal], s3Key)
 					}
-					currentBatch.fieldIndexes[traceIDFName][traceIDFVal][s3Key] = struct{}{}
 				}
 			}
 		}
@@ -478,16 +473,7 @@ func (im *IndexManager) addLogsToIndex(logs plog.Logs, s3Key string, minute int)
 // marshalIndex marshals the index using the configured marshaler type
 func (im *IndexManager) marshalIndex(fieldName string, fieldIndex map[fieldValue]fieldS3Keys) ([]byte, error) {
 	if im.config.MarshalerName == awss3exporter.OtlpJSON {
-		// Convert map[string]struct{} to []string for JSON serialization
-		jsonIndex := make(map[string][]string, len(fieldIndex))
-		for fv, s3KeysMap := range fieldIndex {
-			s3KeysList := make([]string, 0, len(s3KeysMap))
-			for s3Key := range s3KeysMap {
-				s3KeysList = append(s3KeysList, s3Key)
-			}
-			jsonIndex[string(fv)] = s3KeysList
-		}
-		return json.Marshal(jsonIndex)
+		return json.Marshal(fieldIndex)
 	} else {
 		// For protobuf, we use the generated protobuf methods
 		return im.marshalIndexAsProtobuf(fieldName, fieldIndex)
@@ -503,13 +489,11 @@ func (im *IndexManager) marshalIndexAsProtobuf(fieldName string, fieldIndex map[
 	}
 
 	// Convert the map data to protobuf structures
-	for fieldVal, s3KeysMap := range fieldIndex {
+	for fieldVal, s3Keys := range fieldIndex {
 		s3KeysList := &index.S3Keys{
-			S3Keys: make([]string, 0, len(s3KeysMap)),
+			S3Keys: make([]string, len(s3Keys)),
 		}
-		for s3Key := range s3KeysMap {
-			s3KeysList.S3Keys = append(s3KeysList.S3Keys, s3Key)
-		}
+		copy(s3KeysList.S3Keys, s3Keys)
 		fieldIndexProto.FieldIndex[string(fieldVal)] = s3KeysList
 	}
 

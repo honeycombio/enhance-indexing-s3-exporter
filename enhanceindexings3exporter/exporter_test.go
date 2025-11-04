@@ -315,8 +315,8 @@ func TestMarshalIndex(t *testing.T) {
 			marshalerName: awss3exporter.OtlpJSON,
 			fieldName:     "user.id",
 			fieldIndex: map[fieldValue]fieldS3Keys{
-				"user123": {"key1": struct{}{}, "key2": struct{}{}},
-				"user456": {"key3": struct{}{}},
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
 			},
 			expectError: false,
 		},
@@ -325,8 +325,8 @@ func TestMarshalIndex(t *testing.T) {
 			marshalerName: awss3exporter.OtlpProtobuf,
 			fieldName:     "user.id",
 			fieldIndex: map[fieldValue]fieldS3Keys{
-				"user123": {"key1": struct{}{}, "key2": struct{}{}},
-				"user456": {"key3": struct{}{}},
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
 			},
 			expectError: false,
 		},
@@ -391,17 +391,17 @@ func TestUploadBatch(t *testing.T) {
 		minuteDir: "traces-and-logs/year=2025/month=07/day=28/hour=12/minute=30",
 		fieldIndexes: map[fieldName]map[fieldValue]fieldS3Keys{
 			"user.id": {
-				"user123": {"key1": struct{}{}, "key2": struct{}{}},
-				"user456": {"key3": struct{}{}},
+				"user123": {"key1", "key2"},
+				"user456": {"key3"},
 			},
 			"request.id": {
-				"req789": {"key4": struct{}{}},
+				"req789": {"key4"},
 			},
 			"session.id": {
-				"12345": {"key5": struct{}{}},
+				"12345": {"key5"},
 			},
 			"trace.trace_id": {
-				"00000000000000000000000000000001": {"key6": struct{}{}},
+				"00000000000000000000000000000001": {"key6"},
 			},
 		},
 	}
@@ -441,7 +441,7 @@ func TestRolloverIndexes(t *testing.T) {
 		oldMinute: {
 			fieldIndexes: map[fieldName]map[fieldValue]fieldS3Keys{
 				"user.id": {
-					"user123": {"key1": struct{}{}},
+					"user123": {"key1"},
 				},
 			},
 		},
