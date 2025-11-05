@@ -13,6 +13,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -83,8 +84,16 @@ func (c *Config) Validate() error {
 }
 
 func createDefaultConfig() component.Config {
+	queueConfig := exporterhelper.NewDefaultQueueConfig()
+
+	// Set a sensible default max size and sizer for the queue batch if not configured
+	queueConfig.Batch = configoptional.Some(exporterhelper.BatchConfig{
+		MaxSize: 50000,
+		Sizer:   exporterhelper.RequestSizerTypeItems,
+	})
+
 	return &Config{
-		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
+		QueueBatchConfig: queueConfig,
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		RetryConfig:      configretry.NewDefaultBackOffConfig(),
 		S3Uploader: awss3exporter.S3UploaderConfig{
