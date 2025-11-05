@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
-	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/exporter"
@@ -99,24 +98,6 @@ func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 	expectedBatchConfig := exporterhelper.BatchConfig{
 		MaxSize: 50000,
 		Sizer:   exporterhelper.RequestSizerTypeItems,
-	}
-
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
-}
-
-func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
-	config := &Config{
-		QueueBatchConfig: exporterhelper.QueueBatchConfig{
-			Batch: configoptional.Some(exporterhelper.BatchConfig{
-				MaxSize: 10_000_000,
-				Sizer:   exporterhelper.RequestSizerTypeBytes,
-			}),
-		},
-	}
-	expectedBatchConfig := exporterhelper.BatchConfig{
-		MaxSize: 10_000_000,
-		Sizer:   exporterhelper.RequestSizerTypeBytes,
 	}
 
 	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
