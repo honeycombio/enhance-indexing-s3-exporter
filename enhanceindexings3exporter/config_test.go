@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/exporter"
@@ -415,7 +416,7 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:    "api_secret is required",
 		},
 		{
-			name: "valid config with no set queue batch config, using default",
+			name: "valid config with set queue batch config, using custom values",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
 					Region:            "us-east-1",
@@ -428,23 +429,12 @@ func TestConfigValidation(t *testing.T) {
 				APIKey:        configopaque.String("test-api-key"),
 				APISecret:     configopaque.String("test-api-secret"),
 				IndexedFields: []fieldName{"user.id", "service.name"},
-			},
-			expectError: false,
-		},
-		{
-			name: "valid config with set queue batch config, using custom",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-					Compression:       "gzip",
+				QueueBatchConfig: exporterhelper.QueueBatchConfig{
+					Batch: configoptional.Some(exporterhelper.BatchConfig{
+						MaxSize: 10_000_000,
+						Sizer:   exporterhelper.RequestSizerTypeBytes,
+					}),
 				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIEndpoint:   "https://api.honeycomb.io",
-				APIKey:        configopaque.String("test-api-key"),
-				APISecret:     configopaque.String("test-api-secret"),
-				IndexedFields: []fieldName{"user.id", "service.name"},
 			},
 			expectError: false,
 		},
