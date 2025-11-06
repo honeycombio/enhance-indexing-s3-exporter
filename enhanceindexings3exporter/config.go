@@ -86,10 +86,12 @@ func (c *Config) Validate() error {
 func createDefaultConfig() component.Config {
 	queueConfig := exporterhelper.NewDefaultQueueConfig()
 
-	// Set a sensible default max size and sizer for the queue batch if not configured
+	// Set a sensible default values for the queue batch if not configured
 	queueConfig.Batch = configoptional.Some(exporterhelper.BatchConfig{
-		MaxSize: 50000,
-		Sizer:   exporterhelper.RequestSizerTypeItems,
+		MinSize:      50000,
+		MaxSize:      50000,
+		Sizer:        exporterhelper.RequestSizerTypeItems,
+		FlushTimeout: 30 * time.Second,
 	})
 
 	return &Config{
