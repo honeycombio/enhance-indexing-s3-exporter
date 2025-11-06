@@ -3,6 +3,7 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
@@ -97,11 +98,15 @@ func TestConfigMerging(t *testing.T) {
 func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 	config := createDefaultConfig().(*Config)
 	expectedBatchConfig := exporterhelper.BatchConfig{
-		MaxSize: 50000,
-		Sizer:   exporterhelper.RequestSizerTypeItems,
+		MinSize:      50000,
+		MaxSize:      50000,
+		Sizer:        exporterhelper.RequestSizerTypeItems,
+		FlushTimeout: 30 * time.Second,
 	}
 
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MinSize, expectedBatchConfig.MinSize)
 	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().FlushTimeout, expectedBatchConfig.FlushTimeout)
 	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
@@ -127,8 +132,10 @@ func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
 	}
 
 	expectedBatchConfig := exporterhelper.BatchConfig{
-		MaxSize: 10_000_000,
-		Sizer:   exporterhelper.RequestSizerTypeBytes,
+		MinSize:      50000,
+		MaxSize:      10_000_000,
+		Sizer:        exporterhelper.RequestSizerTypeBytes,
+		FlushTimeout: 30 * time.Second,
 	}
 
 	err := config.Validate()
