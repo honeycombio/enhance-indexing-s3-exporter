@@ -1,9 +1,69 @@
-# Enhance Indexing S3 Exporter changelog
+# Enhance Indexing S3 Exporter Changelog
 
-## v0.0.1 Alpha
+## Unreleased
 
-Released 2025-08-20
+## [v0.0.6] - 2024-10-31
 
-First release of the Enhance Indexing S3 Exporter for OpenTelemetry colletors.
+### Fixed
+- Use correct config value for s3Prefix in usage metrics ([#42](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/42))
 
-[v0.0.1]: https://github.com/honeycombio/enhance-indexing-s3-exporter/tree/v0.0.1
+## [v0.0.5] - 2024-10-31
+
+### Added
+- Gather and send usage metrics to Honeycomb in standalone mode ([#41](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/41))
+
+## [v0.0.4] - 2024-10-23
+
+### Added
+- Usage metrics collection for the indexer ([#37](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/37))
+- Management API key validation ([#35](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/35))
+- Hostname configuration option ([#33](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/33))
+- Comprehensive README for exporter component with configuration options ([#32](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/32))
+
+### Changed
+- Updated configuration options to be config-complete ([#34](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/34))
+- Updated configs and README to include management key, secret, and endpoint ([#36](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/36))
+
+### Fixed
+- Extract automatic indexes from Resource Attribute fields with defined precedence ([#31](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/31))
+- Disallow file_prefix in configuration ([#30](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/30))
+
+## [v0.0.3] - 2024-09-12
+
+### Added
+- Automatically index service.name field ([#28](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/28))
+- Log signal type support with IndexManager ([#27](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/27))
+
+### Changed
+- Renamed automatic trace ID index from `trace_id` to `trace.trace_id` ([#29](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/29))
+- Allow minuteIndexBatches to be shared across signal types ([#24](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/24))
+- Bump .tool-versions golang to 1.24.6 ([#26](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/26))
+- Update .tool-versions to accept any patch version of Go 1.24 ([#25](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/25))
+
+## [v0.0.2] - 2024-08-29
+
+### Added
+- Unit tests and configuration validation ([#23](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/23))
+
+### Changed
+- Bump OpenTelemetry components to 0.132.0 and Go version to 1.24 ([#22](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/22))
+
+## [v0.0.1] - 2024-08-20
+
+Initial alpha release of the Enhance Indexing S3 Exporter for OpenTelemetry Collectors.
+
+### Features
+- S3 export of OTLP traces and logs in protobuf or JSON format
+- Automatic field indexing for trace IDs, service names, and session IDs
+- Configurable custom field indexing
+- Time-based partitioning with configurable format
+- Gzip compression support
+- S3-compatible storage support (AWS S3, MinIO, etc.)
+- Integration with OpenTelemetry Collector v0.131.0
+
+[v0.0.6]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.5...enhanceindexings3exporter/v0.0.6
+[v0.0.5]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.4...enhanceindexings3exporter/v0.0.5
+[v0.0.4]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.3...enhanceindexings3exporter/v0.0.4
+[v0.0.3]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.2...enhanceindexings3exporter/v0.0.3
+[v0.0.2]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.1...enhanceindexings3exporter/v0.0.2
+[v0.0.1]: https://github.com/honeycombio/enhance-indexing-s3-exporter/tree/enhanceindexings3exporter/v0.0.1

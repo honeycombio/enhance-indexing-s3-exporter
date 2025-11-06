@@ -1,6 +1,6 @@
 # Enhance Indexing S3 Exporter Configuration
 
-This exporter extends the OpenTelemetry AWS S3 exporter with automatic field indexing capabilities. It writes telemetry data to S3 while simultaneously generating field-based indexes for efficient querying.
+This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and custom field indexing capabilities. It writes telemetry data to S3 while simultaneously generating field-based indexes for more efficient event rehydration and querying in Honeycomb.
 
 ## Supported Configuration Options
 
@@ -26,24 +26,18 @@ exporters:
     # Data marshaling format (required) 
     marshaler: "otlp_protobuf"  # or "otlp_json"
    
-    # Index additional fields
+    # Index custom fields
     indexed_fields: ["user.id", "customer.id"]
 ```
 
 ### Honeycomb API Configuration
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `api_key` | This is a Management API key for your Honeycomb account | - |
-| `api_secret` | This is a Management API secret for your Honeycomb account | - |
-| `api_endpoint` | API URL endpoint for usage tracking | "https://api.honeycomb.io/" |
+| Field | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `api_key` | Management API key for your Honeycomb account | Yes | - |
+| `api_secret` | Management API secret for your Honeycomb account | Yes | - |
+| `api_endpoint` | Honeycomb API endpoint URL for authentication and usage tracking | Yes | - |
 
-#### API URL Configuration
-
-TODO update when we implement metrics endpoint
-
-- **Valid formats**: Hostnames, FQDNs, or IP addresses
-- **Examples**: `"localhost"`, `"prod-server.example.com"`, `"192.168.1.100"`
 
 ### S3 Uploader Configuration (`s3uploader`)
 
@@ -89,11 +83,7 @@ exporters:
     indexed_fields: ["user.id", "customer.id", "environment", "version"]
 ```
 
-**Note**: If the `indexed_fields` field is defined in this exporter component,
-these values will take precedence over the indexes specified for the Enhance
-configuration of the Honeycomb Team. When `indexed_fields` is empty, the indexer
-will retrieve the list of indexed fields from the Honeycomb Team's
-configuration.
+**Note**: The `indexed_fields` configuration specifies which custom fields to index in addition to the automatically indexed fields (`trace.trace_id`, `service.name`, `session.id`). If `indexed_fields` is empty or not specified, only the automatic fields will be indexed.
 
 #### Field Value Precedence
 
@@ -103,16 +93,7 @@ When the same field appears in multiple locations, values are resolved with the 
 2. **Instrumentation scope attributes**  
 3. **Resource attributes**
 
-#### Index File Output
 
-Index files are generated with this naming pattern:
-```
-{partition_path}/index_{field_name}_{uuid}.{format}[.gz]
-```
-
-Examples:
-- `year=2024/month=01/day=15/hour=10/minute=30/index_user.id_abc123.json.gz`
-- `year=2024/month=01/day=15/hour=10/minute=30/index_trace.trace_id_def456.binpb.gz`
 
 ### Configuration Validation
 
@@ -125,8 +106,9 @@ The exporter validates configuration with these rules:
 - ✅ `marshaler` must be "otlp_json" or "otlp_protobuf"
 - ✅ `s3_partition_format` must contain year/month/day/hour/minute placeholders
 - ✅ `s3_partition_format` cannot start or end with "/"
-- ✅ `api_key` and `api_secret` must both be provided together with `api_endpoint`
-- ✅ `api_endpoint` must start with "http://" or "https://"
+- ✅ `api_key` is required
+- ✅ `api_secret` is required
+- ✅ `api_endpoint` is required and must start with "http://" or "https://"
 - ❌ `file_prefix` is not supported (will cause validation failure)
 
 
@@ -137,11 +119,19 @@ The exporter validates configuration with these rules:
 ```yaml
 exporters:
   enhance_indexing_s3_exporter:
+    # Required Honeycomb API credentials
+    api_key: ${env:HONEYCOMB_MANAGEMENT_API_KEY}
+    api_secret: ${env:HONEYCOMB_MANAGEMENT_API_SECRET}
+    api_endpoint: https://api.honeycomb.io
+
+    # S3 configuration
     s3uploader:
       region: "us-west-2"
       s3_bucket: "telemetry-data"
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       compression: "gzip"
+
+    # Data format
     marshaler: "otlp_protobuf"
 ```
 
@@ -206,7 +196,13 @@ service:
 
 ```yaml
 exporters:
-  enhance_indexing_s3:
+  enhance_indexing_s3_exporter:
+    # Required Honeycomb API credentials (even for local development)
+    api_key: ${env:HONEYCOMB_MANAGEMENT_API_KEY}
+    api_secret: ${env:HONEYCOMB_MANAGEMENT_API_SECRET}
+    api_endpoint: https://api.honeycomb.io
+
+    # MinIO configuration
     s3uploader:
       region: "us-east-1"
       endpoint: "http://localhost:9000"
@@ -215,12 +211,14 @@ exporters:
       disable_ssl: true
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       compression: "gzip"
+
+    # Data format
     marshaler: "otlp_json"
-    index:
-      enabled: true
-      indexed_fields:
-        - "user.id"
-        - "session.id"
+
+    # Custom indexed fields
+    indexed_fields:
+      - "user.id"
+      - "customer.id"
 ```
 
 ## Output Structure
