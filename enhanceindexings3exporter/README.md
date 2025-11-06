@@ -36,26 +36,27 @@ The exporter requires a Honeycomb Management API key with the `enhance:write` sc
 
 For information on creating Management API keys, see [Managing API Keys](https://docs.honeycomb.io/configure/teams/manage-api-keys/).
 
-| Field | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `api_key` | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes | - |
-| `api_secret` | Management API secret for your Honeycomb account | Yes | - |
-| `api_endpoint` | Honeycomb API endpoint URL for authentication and usage tracking | Yes | - |
+| Field          | Description                                                                     | Required | Default |
+|----------------|---------------------------------------------------------------------------------|----------|---------|
+| `api_key`      | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes      | -       |
+| `api_secret`   | Management API secret for your Honeycomb account                                | Yes      | -       |
+| `api_endpoint` | Honeycomb API endpoint URL for authentication and usage tracking                | Yes      | -       |
 
 
 ### S3 Uploader Configuration (`s3uploader`)
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `region` | AWS region (required) | "us-east-1" |
-| `s3_bucket` | S3 bucket (required unless `endpoint` provided) | - |
+| Field                 | Description                                                                                             | Default                                     |
+|-----------------------|---------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| `region`              | AWS region (required)                                                                                   | "us-east-1"                                 |
+| `s3_bucket`           | S3 bucket (required unless `endpoint` provided)                                                         | -                                           |
+| `s3_prefix`           | The prefix to use when writing files to S3.                                                             | -                                           |
 | `s3_partition_format` | Filepath partitioning format (see [strftime][1]). Must contain year/month/day/hour/minute placeholders. | "year=%Y/month=%m/day=%d/hour=%H/minute=%M" |
-| `compression` | File compression: "gzip" or "none" | "gzip" |
-| `retry_mode` | Retry strategy: "standard" or "adaptive" | "standard" |
-| `retry_max_attempts` | Maximum retry attempts | 3 |
-| `endpoint` | Custom S3 endpoint (for S3-compatible services) | - |
-| `s3_force_path_style` | Force path-style S3 addressing | false |
-| `disable_ssl` | Disable SSL for S3 requests | false |
+| `compression`         | File compression: "gzip" or "none"                                                                      | "gzip"                                      |
+| `retry_mode`          | Retry strategy: "standard" or "adaptive"                                                                | "standard"                                  |
+| `retry_max_attempts`  | Maximum retry attempts                                                                                  | 3                                           |
+| `endpoint`            | Custom S3 endpoint (for S3-compatible services)                                                         | -                                           |
+| `s3_force_path_style` | Force path-style S3 addressing                                                                          | false                                       |
+| `disable_ssl`         | Disable SSL for S3 requests                                                                             | false                                       |
 
 [1]: https://www.man7.org/linux/man-pages/man3/strftime.3.html
 
@@ -104,7 +105,7 @@ When the same field appears in multiple locations, values are resolved with the 
 The exporter validates configuration with these rules:
 
 - ✅ `region` is required
-- ✅ `s3_bucket` is required unless `endpoint` is provided  
+- ✅ `s3_bucket` is required unless `endpoint` is provided
 - ✅ `compression` must be "gzip" or "none"
 - ✅ `retry_mode` must be "standard" or "adaptive"
 - ✅ `marshaler` must be "otlp_json" or "otlp_protobuf"
