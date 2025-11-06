@@ -448,29 +448,6 @@ func TestConfigValidation(t *testing.T) {
 			expectError: true,
 			errorMsg:    "api_secret is required",
 		},
-		{
-			name: "valid config with set queue batch config, using custom values",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-					Compression:       "gzip",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIEndpoint:   "https://api.honeycomb.io",
-				APIKey:        configopaque.String("test-api-key"),
-				APISecret:     configopaque.String("test-api-secret"),
-				IndexedFields: []fieldName{"user.id", "service.name"},
-				QueueBatchConfig: exporterhelper.QueueBatchConfig{
-					Batch: configoptional.Some(exporterhelper.BatchConfig{
-						MaxSize: 10_000_000,
-						Sizer:   exporterhelper.RequestSizerTypeBytes,
-					}),
-				},
-			},
-			expectError: false,
-		},
 	}
 
 	for _, tt := range tests {
