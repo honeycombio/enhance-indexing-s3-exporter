@@ -17,7 +17,8 @@ This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and 
 - Go 1.24 or later
 - Docker (for local development)
 - AWS credentials configured (for production use)
-- Honeycomb Management API key and secret
+- Honeycomb Management API key and secret with `enhance:write` scope
+  - See [Managing API Keys](https://docs.honeycomb.io/configure/teams/manage-api-keys/) for details on creating Management API keys
 
 ### Installation
 

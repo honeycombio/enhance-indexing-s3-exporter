@@ -32,9 +32,13 @@ exporters:
 
 ### Honeycomb API Configuration
 
+The exporter requires a Honeycomb Management API key with the `enhance:write` scope for authentication and usage tracking.
+
+For information on creating Management API keys, see [Managing API Keys](https://docs.honeycomb.io/configure/teams/manage-api-keys/).
+
 | Field | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `api_key` | Management API key for your Honeycomb account | Yes | - |
+| `api_key` | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes | - |
 | `api_secret` | Management API secret for your Honeycomb account | Yes | - |
 | `api_endpoint` | Honeycomb API endpoint URL for authentication and usage tracking | Yes | - |
 
