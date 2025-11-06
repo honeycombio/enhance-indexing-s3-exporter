@@ -63,22 +63,6 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if c.APIEndpoint == "" {
-		return fmt.Errorf("api_endpoint is required")
-	}
-
-	if err := validateHostname(c.APIEndpoint); err != nil {
-		return err
-	}
-
-	if c.APIKey == "" {
-		return fmt.Errorf("api_key is required")
-	}
-
-	if c.APISecret == "" {
-		return fmt.Errorf("api_secret is required")
-	}
-
 	return nil
 }
 

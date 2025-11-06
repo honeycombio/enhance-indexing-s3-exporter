@@ -212,16 +212,33 @@ func (im *IndexManager) shutdown(ctx context.Context) error {
 }
 
 func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Host) error {
-	teamSlug, err := validateAPIKey(e.config)
-	if err != nil {
-		return fmt.Errorf("failed to validate API credentials: %w", err)
-	}
-	e.teamSlug = teamSlug
-
 	e.standaloneMode = !e.isHoneycombExtensionPresent(host)
 
-	if e.standaloneMode && e.teamSlug == "" {
-		return fmt.Errorf("team slug is required in standalone mode")
+	if e.standaloneMode {
+		if e.config.APIEndpoint == "" {
+			return fmt.Errorf("api_endpoint is required")
+		}
+
+		if err := validateHostname(e.config.APIEndpoint); err != nil {
+			return err
+		}
+
+		if e.config.APIKey == "" {
+			return fmt.Errorf("api_key is required")
+		}
+
+		if e.config.APISecret == "" {
+			return fmt.Errorf("api_secret is required")
+		}
+
+		teamSlug, err := validateAPIKey(e.config)
+		if err != nil {
+			return fmt.Errorf("failed to validate API credentials: %w", err)
+		}
+		if teamSlug == "" {
+			return fmt.Errorf("team slug is required in standalone mode")
+		}
+		e.teamSlug = teamSlug
 	}
 
 	e.logger.Info("Starting enhance indexing S3 exporter",
