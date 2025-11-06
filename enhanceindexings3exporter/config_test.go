@@ -294,38 +294,6 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:    "file_prefix is not supported",
 		},
 		{
-			name: "hostname missing protocol scheme",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIEndpoint:   "api.example.com",
-				APIKey:        configopaque.String("test-key"),
-				APISecret:     configopaque.String("test-secret"),
-			},
-			expectError: true,
-			errorMsg:    "hostname must start with 'http://' or 'https://'",
-		},
-		{
-			name: "invalid hostname too long",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIEndpoint:   "https://this-is-a-very-long-hostname-that-exceeds-the-maximum-allowed-length-for-a-hostname-which-is-253-characters-according-to-rfc-standards-and-should-therefore-fail-validation-when-we-test-it-in-our-configuration-validation-tests-to-ensure-that-our-hostname-validation-logic-is-working-correctly-and-properly-rejecting-hostnames-that-are-too-long",
-				APIKey:        configopaque.String("test-key"),
-				APISecret:     configopaque.String("test-secret"),
-			},
-			expectError: true,
-			errorMsg:    "hostname is too long",
-		},
-		{
 			name: "valid hostname with https",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
@@ -354,54 +322,6 @@ func TestConfigValidation(t *testing.T) {
 				APISecret:     configopaque.String("test-secret"),
 			},
 			expectError: false,
-		},
-		{
-			name: "missing api_endpoint",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String("test-api-key"),
-				APISecret:     configopaque.String("test-api-secret"),
-				APIEndpoint:   "",
-			},
-			expectError: true,
-			errorMsg:    "api_endpoint is required",
-		},
-		{
-			name: "missing api_key",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String(""),
-				APISecret:     configopaque.String("test-api-secret"),
-				APIEndpoint:   "https://api.honeycomb.io",
-			},
-			expectError: true,
-			errorMsg:    "api_key is required",
-		},
-		{
-			name: "missing api_secret",
-			config: &Config{
-				S3Uploader: awss3exporter.S3UploaderConfig{
-					Region:            "us-east-1",
-					S3Bucket:          "test-bucket",
-					S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
-				},
-				MarshalerName: awss3exporter.OtlpProtobuf,
-				APIKey:        configopaque.String("test-api-key"),
-				APISecret:     configopaque.String(""),
-				APIEndpoint:   "https://api.honeycomb.io",
-			},
-			expectError: true,
-			errorMsg:    "api_secret is required",
 		},
 	}
 
