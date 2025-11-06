@@ -3,12 +3,14 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awss3exporter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"go.opentelemetry.io/collector/exporter"
@@ -91,6 +93,56 @@ func TestConfigMerging(t *testing.T) {
 		assert.NotNil(t, exp.config)
 		assert.Contains(t, exp.config.IndexedFields, fieldName("session.id"))
 	})
+}
+
+func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
+	config := createDefaultConfig().(*Config)
+	expectedBatchConfig := exporterhelper.BatchConfig{
+		MinSize:      50000,
+		MaxSize:      50000,
+		Sizer:        exporterhelper.RequestSizerTypeItems,
+		FlushTimeout: 30 * time.Second,
+	}
+
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MinSize, expectedBatchConfig.MinSize)
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().FlushTimeout, expectedBatchConfig.FlushTimeout)
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
+}
+
+func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
+	config := &Config{
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Region:            "us-east-1",
+			S3Bucket:          "test-bucket",
+			S3PartitionFormat: "year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+			Compression:       "gzip",
+		},
+		MarshalerName: awss3exporter.OtlpProtobuf,
+		APIEndpoint:   "https://api.honeycomb.io",
+		APIKey:        configopaque.String("test-api-key"),
+		APISecret:     configopaque.String("test-api-secret"),
+		IndexedFields: []fieldName{"user.id", "service.name"},
+		QueueBatchConfig: exporterhelper.QueueBatchConfig{
+			Batch: configoptional.Some(exporterhelper.BatchConfig{
+				MaxSize: 10_000_000,
+				Sizer:   exporterhelper.RequestSizerTypeBytes,
+			}),
+		},
+	}
+
+	expectedBatchConfig := exporterhelper.BatchConfig{
+		MinSize:      50000,
+		MaxSize:      10_000_000,
+		Sizer:        exporterhelper.RequestSizerTypeBytes,
+		FlushTimeout: 30 * time.Second,
+	}
+
+	err := config.Validate()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
+	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
 func TestConfigValidation(t *testing.T) {
