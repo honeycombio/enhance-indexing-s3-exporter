@@ -4,4 +4,5 @@ use (
 	./cmd/otelcol
 	./enhanceindexings3exporter
 	./index
+	tools
 )
