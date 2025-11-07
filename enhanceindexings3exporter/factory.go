@@ -73,9 +73,9 @@ func createTracesExporter(
 		s3Exporter.consumeTraces,
 		exporterhelper.WithStart(s3Exporter.start),
 		exporterhelper.WithShutdown(s3Exporter.shutdown),
-		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewTracesQueueBatchSettings()),
-		exporterhelper.WithTimeout(config.TimeoutConfig),
-		exporterhelper.WithRetry(config.RetryConfig),
+		exporterhelper.WithQueue(s3Exporter.config.QueueBatchConfig),
+		exporterhelper.WithTimeout(s3Exporter.config.TimeoutConfig),
+		exporterhelper.WithRetry(s3Exporter.config.RetryConfig),
 	)
 }
 
@@ -102,8 +102,8 @@ func createLogsExporter(
 		s3Exporter.consumeLogs,
 		exporterhelper.WithStart(s3Exporter.start),
 		exporterhelper.WithShutdown(s3Exporter.shutdown),
-		exporterhelper.WithQueueBatch(config.QueueBatchConfig, exporterhelper.NewLogsQueueBatchSettings()),
-		exporterhelper.WithTimeout(config.TimeoutConfig),
-		exporterhelper.WithRetry(config.RetryConfig),
+		exporterhelper.WithQueue(s3Exporter.config.QueueBatchConfig),
+		exporterhelper.WithTimeout(s3Exporter.config.TimeoutConfig),
+		exporterhelper.WithRetry(s3Exporter.config.RetryConfig),
 	)
 }
