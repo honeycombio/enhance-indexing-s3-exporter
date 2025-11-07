@@ -69,6 +69,8 @@ func (c *Config) Validate() error {
 
 func createDefaultConfig() component.Config {
 	queueConfig := exporterhelper.NewDefaultQueueConfig()
+	queueConfig.QueueSize = 500000
+
 	// Set a sensible default values for the queue batch if not configured
 	queueConfig.Batch = configoptional.Some(exporterhelper.BatchConfig{
 		MinSize:      50000,
