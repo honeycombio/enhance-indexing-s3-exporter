@@ -121,7 +121,7 @@ func validateS3PartitionFormat(format string) error {
 		}
 	}
 
-	if !hasGoTimePlaceholders && !hasUnixTimePlaceholders {
+	if (!hasGoTimePlaceholders && !hasUnixTimePlaceholders) || (hasGoTimePlaceholders && hasUnixTimePlaceholders) {
 		return fmt.Errorf("S3PartitionFormat must contain placeholders of year, month, day, hour and minute (e.g., 2006, 01, 02, 15, 04 or %%Y, %%m, %%d, %%H, %%M)")
 	}
 

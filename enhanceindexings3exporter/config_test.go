@@ -329,6 +329,22 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:    "S3PartitionFormat cannot end with '/'",
 		},
 		{
+			name: "invalid s3_partition_format contains both C and Go format",
+			config: &Config{
+				S3Uploader: awss3exporter.S3UploaderConfig{
+					Region:            "us-east-1",
+					S3Bucket:          "test-bucket",
+					S3PartitionFormat: "year=2006/month=01/day=02/hour=15/minute=04/year=%Y/month=%m/day=%d/hour=%H/minute=%M",
+				},
+				MarshalerName: awss3exporter.OtlpProtobuf,
+				APIEndpoint:   "https://api.honeycomb.io",
+				APIKey:        configopaque.String("test-api-key"),
+				APISecret:     configopaque.String("test-api-secret"),
+			},
+			expectError: true,
+			errorMsg:    "S3PartitionFormat must contain placeholders of year, month, day, hour and minute",
+		},
+		{
 			name: "file_prefix is not supported",
 			config: &Config{
 				S3Uploader: awss3exporter.S3UploaderConfig{
