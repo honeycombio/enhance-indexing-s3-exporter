@@ -342,7 +342,7 @@ func TestConfigValidation(t *testing.T) {
 				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
-			errorMsg:    "S3PartitionFormat must contain placeholders of year, month, day, hour and minute",
+			errorMsg:    "must not contain both Go",
 		},
 		{
 			name: "file_prefix is not supported",
