@@ -1,18 +1,30 @@
 # Enhance Indexing S3 Exporter Changelog
 
-## Unreleased
+## [v0.0.8] - 2025-11-12
 
-## [v0.0.6] - 2024-10-31
+- fix: xor the partition format validation (#50) | @TylerHelmuth
+- refactor(exporter): update fieldS3Keys to be a map for speedier ops (#43) | @asdvalenzuela
+- maint: bump collector dependencies (#48) | @TylerHelmuth
+- fix: set default queuesize for default batch size (#49) | @TylerHelmuth
+- maint: update readme with s3_prefix (#47) | @TylerHelmuth
+
+## [v0.0.7] - 2025-11-06
+
+- chore(indexer): ensure docs and important files are up to date (#45) | @asdvalenzuela
+- feat(indexer): Set default batch values in indexer if not present in config (#44) | @jparsons04
+- fix: only validate apiendpoint, apikey, and apisecret in standalone mode (#46) | @TylerHelmuth
+
+## [v0.0.6] - 2025-10-31
 
 ### Fixed
 - Use correct config value for s3Prefix in usage metrics ([#42](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/42))
 
-## [v0.0.5] - 2024-10-31
+## [v0.0.5] - 2025-10-31
 
 ### Added
 - Gather and send usage metrics to Honeycomb in standalone mode ([#41](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/41))
 
-## [v0.0.4] - 2024-10-23
+## [v0.0.4] - 2025-10-23
 
 ### Added
 - Usage metrics collection for the indexer ([#37](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/37))
@@ -28,7 +40,7 @@
 - Extract automatic indexes from Resource Attribute fields with defined precedence ([#31](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/31))
 - Disallow file_prefix in configuration ([#30](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/30))
 
-## [v0.0.3] - 2024-09-12
+## [v0.0.3] - 2025-09-12
 
 ### Added
 - Automatically index service.name field ([#28](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/28))
@@ -40,7 +52,7 @@
 - Bump .tool-versions golang to 1.24.6 ([#26](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/26))
 - Update .tool-versions to accept any patch version of Go 1.24 ([#25](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/25))
 
-## [v0.0.2] - 2024-08-29
+## [v0.0.2] - 2025-08-29
 
 ### Added
 - Unit tests and configuration validation ([#23](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/23))
@@ -48,7 +60,7 @@
 ### Changed
 - Bump OpenTelemetry components to 0.132.0 and Go version to 1.24 ([#22](https://github.com/honeycombio/enhance-indexing-s3-exporter/pull/22))
 
-## [v0.0.1] - 2024-08-20
+## [v0.0.1] - 2025-08-20
 
 Initial alpha release of the Enhance Indexing S3 Exporter for OpenTelemetry Collectors.
 
@@ -60,10 +72,3 @@ Initial alpha release of the Enhance Indexing S3 Exporter for OpenTelemetry Coll
 - Gzip compression support
 - S3-compatible storage support (AWS S3, MinIO, etc.)
 - Integration with OpenTelemetry Collector v0.131.0
-
-[v0.0.6]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.5...enhanceindexings3exporter/v0.0.6
-[v0.0.5]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.4...enhanceindexings3exporter/v0.0.5
-[v0.0.4]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.3...enhanceindexings3exporter/v0.0.4
-[v0.0.3]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.2...enhanceindexings3exporter/v0.0.3
-[v0.0.2]: https://github.com/honeycombio/enhance-indexing-s3-exporter/compare/enhanceindexings3exporter/v0.0.1...enhanceindexings3exporter/v0.0.2
-[v0.0.1]: https://github.com/honeycombio/enhance-indexing-s3-exporter/tree/enhanceindexings3exporter/v0.0.1
