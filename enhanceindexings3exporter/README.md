@@ -1,6 +1,6 @@
 # Enhance Indexing S3 Exporter Configuration
 
-This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and custom field indexing capabilities. It writes telemetry data to S3 while simultaneously generating field-based indexes for more efficient event rehydration and querying in Honeycomb.
+This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and custom field indexing capabilities. It writes trace and log telemetry data to S3 while simultaneously building, then exporting field-based indexes for more efficient event rehydration and querying in Honeycomb.
 
 ## Supported Configuration Options
 
@@ -26,7 +26,7 @@ exporters:
     # Data marshaling format (required) 
     marshaler: "otlp_protobuf"  # or "otlp_json"
    
-    # Index custom fields
+    # Custom index fields (optional)
     indexed_fields: ["user.id", "customer.id"]
 ```
 
@@ -92,13 +92,11 @@ exporters:
 
 #### Field Value Precedence
 
-When the same field appears in multiple locations, values are resolved with the following precedence (highest to lowest):
+When the same field appears in multiple attribute locations, values are resolved with the following precedence (highest to lowest):
 
 1. **Item attributes** (span attributes for traces, log record attributes for logs)
-2. **Instrumentation scope attributes**  
+2. **Instrumentation scope attributes**
 3. **Resource attributes**
-
-
 
 ### Configuration Validation
 
@@ -116,10 +114,9 @@ The exporter validates configuration with these rules:
 - ✅ `api_endpoint` is required and must start with "http://" or "https://"
 - ❌ `file_prefix` is not supported (will cause validation failure)
 
-
 ## Example Configurations
 
-### Basic Configuration
+### Basic Component Configuration
 
 ```yaml
 exporters:
@@ -140,9 +137,15 @@ exporters:
     marshaler: "otlp_protobuf"
 ```
 
-### Configuration with Indexing
+### Full Configuration Example with Custom Index Fields and Queue Batching
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   enhance_indexing_s3_exporter:
     # Queue, timeout, and retry settings
@@ -230,7 +233,7 @@ exporters:
 
 ### Data Files
 
-Telemetry data is stored in the following path format:
+Trace and log telemetry data is stored with the following naming convention:
 
 ```
 {s3_bucket}/{partition_format}/{signal_type}_{uuid}.{format}[.gz]
