@@ -1,10 +1,10 @@
 # Tools
 
-This directory contains utility tools for working with the enhanced indexing S3 exporter.
+This directory contains utility tools for working with the Enhance Indexing S3 Exporter.
 
 ## unmarshal-index
 
-A tool to unmarshal and inspect protobuf index files created by the enhanced indexing S3 exporter.
+A command-line tool to unmarshal and inspect protobuf index files created by the Enhance Indexing S3 Exporter.
 
 ### Usage
 
@@ -35,10 +35,10 @@ Unmarshal a gzipped protobuf index file:
 
 The tool will output:
 1. The field name being indexed
-2. The complete index data in JSON format
+2. The complete index data in pretty-printed JSON
 3. Summary statistics including:
    - Field name
-   - Number of unique field values
+   - Number of unique field values found
    - Total number of S3 files referenced
 
 ### Sample Output

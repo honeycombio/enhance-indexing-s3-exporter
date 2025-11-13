@@ -4,10 +4,10 @@ This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and 
 
 ## Features
 
-- **S3 Storage**: Export traces and logs to S3 in OTLP protobuf or JSON format
-- **Automatic Indexing**: Generate indexes for trace IDs, service names, and session IDs
-- **Custom Field Indexing**: Index additional fields for efficient querying
-- **Partitioned Storage**: Time-based partitioning (year/month/day/hour/minute)
+- **Compatible Configuration**: Configuration options fully compatible with publicly available [awss3exporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/awss3exporter) component
+- **S3 Storage**: Exports traces, logs, and indexes to S3 in OTLP protobuf or JSON format
+- **Automatic Field Indexing**: Generates indexes for trace IDs, service names, and session IDs
+- **Custom Field Indexing**: Flexibility to include additional fields for indexing
 - **Compression**: Optional gzip compression for data and index files
 
 ## Quick Start
@@ -16,9 +16,13 @@ This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and 
 
 - Go 1.24 or later
 - Docker (for local development)
-- AWS credentials configured (for production use)
+- AWS credentials configured (to interact with AWS S3 buckets)
 - Honeycomb Management API key and secret with `enhance:write` scope
   - See [Managing API Keys](https://docs.honeycomb.io/configure/teams/manage-api-keys/) for details on creating Management API keys
+
+### Optional Support
+
+- [Tilt](https://docs.tilt.dev) for local dev orchestration of Docker infrastructure
 
 ### Installation
 
@@ -34,6 +38,12 @@ go build -o otelcol
 Create a collector configuration file with the exporter. Here's a minimal example:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   enhance_indexing_s3_exporter:
     # Required: Honeycomb API credentials
@@ -72,7 +82,7 @@ For complete configuration options, see the [Configuration Guide](enhanceindexin
 ./otelcol --config config.yaml
 ```
 
-## Local Development
+## Local Development with Tilt
 
 ### 1. Start Docker Daemon
 
@@ -97,7 +107,7 @@ Open your browser and navigate to `http://localhost:10350`. Use one of the avail
 
 ### 4. Examine Locally Uploaded Files
 
-View the locally uploaded files at `http://localhost:9001`.
+View the locally uploaded files via the Minio S3 bucket at `http://localhost:9001`.
 
 Log in with the following credentials:
 - Username: `minioadmin`
@@ -117,9 +127,9 @@ Browse the buckets to verify the uploaded data and index files.
 
 1. The OpenTelemetry Collector receives telemetry data via the OTLP receiver
 2. The enhance-indexing-s3-exporter processes traces and logs
-3. Data is written to S3 in partitioned directories with OTLP protobuf or JSON format
-4. Field indexes are automatically generated mapping field values to S3 file locations
-5. Index files are uploaded alongside data files in the same partition
+3. Trace and log data is exported to S3 in time-partitioned directories with OTLP protobuf or JSON format
+4. Field indexes are automatically generated, mapping trace and log field values to S3 file locations
+5. Index files are uploaded alongside data files in the same time partition
 
 ### Indexed Fields
 
@@ -130,9 +140,9 @@ The exporter automatically indexes three fields:
 
 You can configure additional custom fields to index. See the [Configuration Guide](enhanceindexings3exporter/README.md#custom-indexed-fields) for details.
 
-### Output Structure
+### Exported File Structure
 
-Data and index files are organized in S3 using time-based partitioning:
+Data and index files are organized in S3 using time-based partitioning and use the following naming conventions for protobuf-encoded, gzipped files:
 
 ```
 {bucket}/{partition}/traces_{uuid}.binpb.gz
