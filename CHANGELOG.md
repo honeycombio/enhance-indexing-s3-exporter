@@ -1,5 +1,11 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.9] - 2026-01-12
+
+- maint: bump dependencies to v1.49.0/v0.143.0 (#54) | [Tyler Helmuth](https://github.com/Tyler Helmuth)
+- docs: Tidy up all README docs in preparation of GA (#53) | [Josh Parsons](https://github.com/Josh Parsons)
+- chore(indexer): Tidy up repo structure (#52) | [Josh Parsons](https://github.com/Josh Parsons)
+
 ## [v0.0.8] - 2025-11-12
 
 - fix: xor the partition format validation (#50) | @TylerHelmuth
