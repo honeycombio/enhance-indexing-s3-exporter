@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
 
 func TestConfigMerging(t *testing.T) {
@@ -55,6 +56,8 @@ func TestConfigMerging(t *testing.T) {
 				factories.Receivers = map[component.Type]receiver.Factory{
 					otlpreceiver.NewFactory().Type(): otlpreceiver.NewFactory(),
 				}
+
+				factories.Telemetry = otelconftelemetry.NewFactory()
 
 				return factories, nil
 			},
@@ -104,10 +107,10 @@ func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 		FlushTimeout: 30 * time.Second,
 	}
 
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MinSize, expectedBatchConfig.MinSize)
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().FlushTimeout, expectedBatchConfig.FlushTimeout)
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().MinSize, expectedBatchConfig.MinSize)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().FlushTimeout, expectedBatchConfig.FlushTimeout)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
 func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
@@ -123,12 +126,12 @@ func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
 		APIKey:        configopaque.String("test-api-key"),
 		APISecret:     configopaque.String("test-api-secret"),
 		IndexedFields: []fieldName{"user.id", "service.name"},
-		QueueBatchConfig: exporterhelper.QueueBatchConfig{
+		QueueBatchConfig: configoptional.Some(exporterhelper.QueueBatchConfig{
 			Batch: configoptional.Some(exporterhelper.BatchConfig{
 				MaxSize: 10_000_000,
 				Sizer:   exporterhelper.RequestSizerTypeBytes,
 			}),
-		},
+		}),
 	}
 
 	expectedBatchConfig := exporterhelper.BatchConfig{
@@ -141,8 +144,8 @@ func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
 	err := config.Validate()
 	require.NoError(t, err)
 
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
-	assert.Equal(t, config.QueueBatchConfig.Batch.Get().Sizer, expectedBatchConfig.Sizer)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().MaxSize, expectedBatchConfig.MaxSize)
+	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
 func TestConfigValidation(t *testing.T) {

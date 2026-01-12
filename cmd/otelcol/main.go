@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 )
 
 func main() {
@@ -89,6 +90,8 @@ func getFactories() (otelcol.Factories, error) {
 
 	// Extensions (empty for now)
 	factories.Extensions = map[component.Type]extension.Factory{}
+
+	factories.Telemetry = otelconftelemetry.NewFactory()
 
 	return factories, nil
 }

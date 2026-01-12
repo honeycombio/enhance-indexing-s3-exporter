@@ -19,11 +19,11 @@ import (
 )
 
 type Config struct {
-	QueueBatchConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
-	TimeoutConfig    exporterhelper.TimeoutConfig    `mapstructure:",squash"`
-	RetryConfig      configretry.BackOffConfig       `mapstructure:"retry_on_failure"`
-	S3Uploader       awss3exporter.S3UploaderConfig  `mapstructure:"s3uploader"`
-	MarshalerName    awss3exporter.MarshalerType     `mapstructure:"marshaler"`
+	QueueBatchConfig configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
+	TimeoutConfig    exporterhelper.TimeoutConfig                             `mapstructure:",squash"`
+	RetryConfig      configretry.BackOffConfig                                `mapstructure:"retry_on_failure"`
+	S3Uploader       awss3exporter.S3UploaderConfig                           `mapstructure:"s3uploader"`
+	MarshalerName    awss3exporter.MarshalerType                              `mapstructure:"marshaler"`
 
 	// APIKey is the Management API Key associated with the Honeycomb account.
 	// APISecret is the Management API Secret associated with the Honeycomb account.
@@ -80,7 +80,7 @@ func createDefaultConfig() component.Config {
 	})
 
 	return &Config{
-		QueueBatchConfig: queueConfig,
+		QueueBatchConfig: configoptional.Some(queueConfig),
 		TimeoutConfig:    exporterhelper.NewDefaultTimeoutConfig(),
 		RetryConfig:      configretry.NewDefaultBackOffConfig(),
 		S3Uploader: awss3exporter.S3UploaderConfig{
