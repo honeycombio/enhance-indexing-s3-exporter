@@ -113,6 +113,11 @@ func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
+func TestConfigDefaultUsageReportingInterval(t *testing.T) {
+	config := createDefaultConfig().(*Config)
+	assert.Equal(t, 5*time.Minute, config.UsageReportingInterval)
+}
+
 func TestConfigCustomQueueBatchConfigValues(t *testing.T) {
 	config := &Config{
 		S3Uploader: awss3exporter.S3UploaderConfig{

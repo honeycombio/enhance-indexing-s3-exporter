@@ -1,5 +1,10 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [Unreleased]
+
+### Added
+- Added configurable `usage_reporting_interval` option (only applicable in standalone mode) to control how often usage metrics are sent to Honeycomb API (default: 5m, range: 30s-10m). This helps reduce API rate limiting for high-volume customers.
+
 ## [v0.0.9] - 2026-01-12
 
 - maint: bump dependencies to v1.49.0/v0.143.0 (#54) | [Tyler Helmuth](https://github.com/Tyler Helmuth)

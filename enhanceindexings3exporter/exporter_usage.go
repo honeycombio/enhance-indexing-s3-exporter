@@ -150,11 +150,12 @@ func (e *enhanceIndexingS3Exporter) createUsageReport() pmetric.Metrics {
 	return m
 }
 
-// startMetricsCollection collects and sends metrics every 30 seconds
+// startMetricsCollection collects and sends metrics at the configured interval
 func (e *enhanceIndexingS3Exporter) startMetricsCollection(ctx context.Context) {
-	e.logger.Info("Starting metrics collection for standalone mode")
+	e.logger.Info("Starting metrics collection for standalone mode",
+		zap.Duration("interval", e.config.UsageReportingInterval))
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(e.config.UsageReportingInterval)
 	defer ticker.Stop()
 
 	for {

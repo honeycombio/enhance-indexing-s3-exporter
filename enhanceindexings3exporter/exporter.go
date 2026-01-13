@@ -234,6 +234,15 @@ func (e *enhanceIndexingS3Exporter) start(ctx context.Context, host component.Ho
 			return fmt.Errorf("api_secret is required")
 		}
 
+		// Validate usage_reporting_interval if explicitly set (non-zero).
+		// Zero value means "use default" which is set by createDefaultConfig().
+		if e.config.UsageReportingInterval != 0 && e.config.UsageReportingInterval < 30*time.Second {
+			return fmt.Errorf("usage_reporting_interval must be at least 30s, got: %s", e.config.UsageReportingInterval)
+		}
+		if e.config.UsageReportingInterval > 10*time.Minute {
+			return fmt.Errorf("usage_reporting_interval must be at most 10m, got: %s", e.config.UsageReportingInterval)
+		}
+
 		teamSlug, err := validateAPIKey(e.config)
 		if err != nil {
 			return fmt.Errorf("failed to validate API credentials: %w", err)
