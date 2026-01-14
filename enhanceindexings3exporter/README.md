@@ -36,11 +36,12 @@ The exporter requires a Honeycomb Management API key with the `enhance:write` sc
 
 For information on creating Management API keys, see [Managing API Keys](https://docs.honeycomb.io/configure/teams/manage-api-keys/).
 
-| Field          | Description                                                                     | Required | Default |
-|----------------|---------------------------------------------------------------------------------|----------|---------|
-| `api_key`      | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes      | -       |
-| `api_secret`   | Management API secret for your Honeycomb account                                | Yes      | -       |
-| `api_endpoint` | Honeycomb API endpoint URL for authentication and usage tracking                | Yes      | -       |
+| Field                      | Description                                                                     | Required | Default |
+|----------------------------|---------------------------------------------------------------------------------|----------|---------|
+| `api_key`                  | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes      | -       |
+| `api_secret`               | Management API secret for your Honeycomb account                                | Yes      | -       |
+| `api_endpoint`             | Honeycomb API endpoint URL for authentication and usage tracking                | Yes      | -       |
+| `usage_reporting_interval` | How often usage metrics are sent to Honeycomb. Valid range: 30s to 10m. | No | 1m |
 
 
 ### S3 Uploader Configuration (`s3uploader`)
@@ -112,6 +113,7 @@ The exporter validates configuration with these rules:
 - ✅ `api_key` is required
 - ✅ `api_secret` is required
 - ✅ `api_endpoint` is required and must start with "http://" or "https://"
+- ✅ `usage_reporting_interval` must be between 30s and 10m (standalone mode only)
 - ❌ `file_prefix` is not supported (will cause validation failure)
 
 ## Example Configurations
