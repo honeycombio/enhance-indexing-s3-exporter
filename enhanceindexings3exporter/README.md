@@ -41,7 +41,7 @@ For information on creating Management API keys, see [Managing API Keys](https:/
 | `api_key`                  | Management API key for your Honeycomb account (must have `enhance:write` scope) | Yes      | -       |
 | `api_secret`               | Management API secret for your Honeycomb account                                | Yes      | -       |
 | `api_endpoint`             | Honeycomb API endpoint URL for authentication and usage tracking                | Yes      | -       |
-| `usage_reporting_interval` | How often usage metrics are sent to Honeycomb. Valid range: 30s to 10m. | No | 5m |
+| `usage_reporting_interval` | How often usage metrics are sent to Honeycomb. Valid range: 30s to 10m. | No | 1m |
 
 
 ### S3 Uploader Configuration (`s3uploader`)

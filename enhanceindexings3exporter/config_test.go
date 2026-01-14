@@ -115,7 +115,7 @@ func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 
 func TestConfigDefaultUsageReportingInterval(t *testing.T) {
 	config := createDefaultConfig().(*Config)
-	assert.Equal(t, 5*time.Minute, config.UsageReportingInterval)
+	assert.Equal(t, 1*time.Minute, config.UsageReportingInterval)
 }
 
 func TestConfigCustomQueueBatchConfigValues(t *testing.T) {

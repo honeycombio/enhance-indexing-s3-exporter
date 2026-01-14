@@ -32,7 +32,7 @@ type Config struct {
 	// APIEndpoint is the Honeycomb API endpoint
 	APIEndpoint string `mapstructure:"api_endpoint"`
 	// UsageReportingInterval is how often usage metrics are sent to the Honeycomb API.
-	// Only applies in standalone mode. Valid range: 30s to 10m. Default: 5m.
+	// Only applies in standalone mode. Valid range: 30s to 10m. Default: 1m.
 	UsageReportingInterval time.Duration `mapstructure:"usage_reporting_interval"`
 
 	// IndexedFields is a list of fields to index.
@@ -95,7 +95,7 @@ func createDefaultConfig() component.Config {
 			RetryMode:         "standard",
 		},
 		MarshalerName:          awss3exporter.OtlpProtobuf,
-		UsageReportingInterval: 5 * time.Minute,
+		UsageReportingInterval: 1 * time.Minute,
 		IndexedFields:          []fieldName{},
 	}
 }
