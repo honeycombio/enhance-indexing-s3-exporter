@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/collector/receiver v1.52.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.146.1
 	go.opentelemetry.io/collector/service v0.146.1
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.64.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
 	go.uber.org/zap v1.27.1
 )
 

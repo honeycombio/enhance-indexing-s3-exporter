@@ -234,7 +234,11 @@ func (e *enhanceIndexingS3Exporter) collectAndSendMetrics(ctx context.Context) {
 	req.Header.Set("Authorization", auth)
 	req.Header.Set("Content-Type", "application/vnd.api+json")
 
-	resp, err := otelhttp.DefaultClient.Do(req)
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		e.logger.Error("Failed to send metrics", zap.Error(err))
 		return
