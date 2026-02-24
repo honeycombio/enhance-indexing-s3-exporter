@@ -1,5 +1,14 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.12] - 2026-02-24
+
+- chore: OTel v0.146.0 (#60) | [Ian Adams](https://github.com/mrsillydog)
+- chore: Bump go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp to v0.65.0 (#61) | [Ian Adams](https://github.com/mrsillydog)
+
+## [v0.0.11] - 2026-02-16
+
+- chore: OTel v0.144.0 (#59) | [Ian Adams](https://github.com/mrsillydog)
+
 ## [v0.0.10] - 2026-01-30
 
 - feat(config): add configurable usage reporting interval (#56) | [Alaina Valenzuela](https://github.com/asdvalenzuela)
