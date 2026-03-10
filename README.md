@@ -59,7 +59,7 @@ exporters:
       compression: "gzip"
 
     # Required: Data format
-    marshaler: "otlp_protobuf"
+    marshaler: "otlp_proto"
 
     # Optional: Custom indexed fields
     indexed_fields: ["user.id", "customer.id"]

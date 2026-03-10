@@ -60,7 +60,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.MarshalerName != awss3exporter.OtlpJSON && c.MarshalerName != awss3exporter.OtlpProtobuf {
-		return fmt.Errorf("marshaler must be 'otlp_json' or 'otlp_protobuf', got: %s", c.MarshalerName)
+		return fmt.Errorf("marshaler must be 'otlp_json' or 'otlp_proto', got: %s", c.MarshalerName)
 	}
 
 	if err := validateS3PartitionFormat(c.S3Uploader.S3PartitionFormat); err != nil {

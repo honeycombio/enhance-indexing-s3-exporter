@@ -24,7 +24,7 @@ exporters:
       # ... S3 settings
     
     # Data marshaling format (required) 
-    marshaler: "otlp_protobuf"  # or "otlp_json"
+    marshaler: "otlp_proto"  # or "otlp_json"
    
     # Custom index fields (optional)
     indexed_fields: ["user.id", "customer.id"]
@@ -67,7 +67,7 @@ For information on creating Management API keys, see [Managing API Keys](https:/
 
 The `marshaler` field determines the data format written to S3:
 
-- **`otlp_protobuf`** (default): OpenTelemetry Protocol as Protocol Buffers - more efficient, smaller files
+- **`otlp_proto`** (default): OpenTelemetry Protocol as Protocol Buffers - more efficient, smaller files
 - **`otlp_json`**: OpenTelemetry Protocol as JSON - human-readable format
 
 #### Automatically Indexed Fields
@@ -107,7 +107,7 @@ The exporter validates configuration with these rules:
 - ✅ `s3_bucket` is required unless `endpoint` is provided
 - ✅ `compression` must be "gzip" or "none"
 - ✅ `retry_mode` must be "standard" or "adaptive"
-- ✅ `marshaler` must be "otlp_json" or "otlp_protobuf"
+- ✅ `marshaler` must be "otlp_json" or "otlp_proto"
 - ✅ `s3_partition_format` must contain year/month/day/hour/minute placeholders
 - ✅ `s3_partition_format` cannot start or end with "/"
 - ✅ `api_key` is required
@@ -136,7 +136,7 @@ exporters:
       compression: "gzip"
 
     # Data format
-    marshaler: "otlp_protobuf"
+    marshaler: "otlp_proto"
 ```
 
 ### Full Configuration Example with Custom Index Fields and Queue Batching
@@ -180,7 +180,7 @@ exporters:
       retry_max_attempts: 5
     
     # Data format
-    marshaler: "otlp_protobuf"
+    marshaler: "otlp_proto"
     
     # Field indexing
     indexed_fields:

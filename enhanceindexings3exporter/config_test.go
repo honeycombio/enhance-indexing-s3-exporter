@@ -255,7 +255,7 @@ func TestConfigValidation(t *testing.T) {
 				APISecret:     configopaque.String("test-api-secret"),
 			},
 			expectError: true,
-			errorMsg:    "marshaler must be 'otlp_json' or 'otlp_protobuf'",
+			errorMsg:    "marshaler must be 'otlp_json' or 'otlp_proto'",
 		},
 		{
 			name: "empty s3_partition_format",
