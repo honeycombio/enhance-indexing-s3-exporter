@@ -348,28 +348,41 @@ func (im *IndexManager) startTimer(ctx context.Context) {
 }
 
 func (im *IndexManager) rolloverIndexes(ctx context.Context) {
-	minute := time.Now().UTC().Minute()
-	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
+	currentMinute := time.Now().UTC().Minute()
+	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", currentMinute))
 
-	// Check if there are any index batches that are ready to be uploaded
-	for minute, indexBatch := range im.minuteIndexBatches {
+	// Snapshot and detach ready batches under the write lock so that
+	// iteration/mutation of minuteIndexBatches is race-free with the
+	// ingestion path (addTracesToIndex / addLogsToIndex / ensureMinuteBatch),
+	// which writes under the same lock. Detached batches are then uploaded
+	// outside the lock so the slow S3 I/O does not block trace ingestion.
+	type readyBatch struct {
+		minute int
+		batch  *MinuteIndexBatch
+	}
+	var ready []readyBatch
+
+	im.mutex.Lock()
+	for minute, batch := range im.minuteIndexBatches {
 		if im.readyToUpload(minute) {
-			im.mutex.RLock()
-			im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
-			err := im.uploadBatch(ctx, indexBatch)
-			im.mutex.RUnlock()
-			if err != nil {
-				im.logger.Error("Failed to upload index batch", zap.Error(err))
-				break
-			}
-
-			im.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
+			ready = append(ready, readyBatch{minute: minute, batch: batch})
 			delete(im.minuteIndexBatches, minute)
 		}
 	}
+	im.mutex.Unlock()
+
+	for _, rb := range ready {
+		im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", rb.minute))
+		if err := im.uploadBatch(ctx, rb.batch); err != nil {
+			im.logger.Error("Failed to upload index batch",
+				zap.Error(err), zap.Int("minute", rb.minute))
+			continue
+		}
+		im.logger.Info("Uploaded and dropped index batch for the minute", zap.Int("minute", rb.minute))
+	}
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
-	im.ensureMinuteBatch(minute)
+	im.ensureMinuteBatch(currentMinute)
 }
 
 // readyToUpload checks if the minute batch is ready to be uploaded
