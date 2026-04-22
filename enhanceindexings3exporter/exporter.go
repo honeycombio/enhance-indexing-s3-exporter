@@ -371,12 +371,25 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	}
 	im.mutex.Unlock()
 
-	for _, rb := range ready {
+	for i, rb := range ready {
 		im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", rb.minute))
 		if err := im.uploadBatch(ctx, rb.batch); err != nil {
 			im.logger.Error("Failed to upload index batch",
 				zap.Error(err), zap.Int("minute", rb.minute))
-			continue
+			// Preserve the previous error-handling contract: on a transient
+			// upload failure, stop uploading in this cycle and return the
+			// failed batch (plus any still-unprocessed ready batches) to the
+			// map so the next tick retries them. Skip reinsertion if a fresh
+			// batch already exists for the same minute (a >= 1h wraparound),
+			// to avoid clobbering new ingest data with stale contents.
+			im.mutex.Lock()
+			for _, remain := range ready[i:] {
+				if _, exists := im.minuteIndexBatches[remain.minute]; !exists {
+					im.minuteIndexBatches[remain.minute] = remain.batch
+				}
+			}
+			im.mutex.Unlock()
+			break
 		}
 		im.logger.Info("Uploaded and dropped index batch for the minute", zap.Int("minute", rb.minute))
 	}
