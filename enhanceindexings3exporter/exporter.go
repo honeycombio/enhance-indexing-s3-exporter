@@ -351,21 +351,37 @@ func (im *IndexManager) rolloverIndexes(ctx context.Context) {
 	minute := time.Now().UTC().Minute()
 	im.logger.Info("Timer ticked, checking for index batches to upload", zap.Int("minute", minute))
 
-	// Check if there are any index batches that are ready to be uploaded
-	for minute, indexBatch := range im.minuteIndexBatches {
-		if im.readyToUpload(minute) {
-			im.mutex.RLock()
-			im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", minute))
-			err := im.uploadBatch(ctx, indexBatch)
-			im.mutex.RUnlock()
-			if err != nil {
-				im.logger.Error("Failed to upload index batch", zap.Error(err))
-				break
-			}
-
-			im.logger.Info("Deleting index batch for the minute", zap.Int("minute", minute))
-			delete(im.minuteIndexBatches, minute)
+	// Snapshot the ready-to-upload batches under the write lock so we
+	// don't iterate the map concurrently with addTracesToIndex /
+	// addLogsToIndex / ensureMinuteBatch writes. Previously this loop
+	// iterated+deleted without holding the lock, racing with ingestion
+	// goroutines that took im.mutex.Lock() — Go fatal'd the collector
+	// with 'concurrent map iteration and map write' roughly every few
+	// hours under steady load.
+	im.mutex.Lock()
+	ready := make(map[int]*MinuteIndexBatch)
+	for m, b := range im.minuteIndexBatches {
+		if im.readyToUpload(m) {
+			ready[m] = b
+			delete(im.minuteIndexBatches, m)
 		}
+	}
+	im.mutex.Unlock()
+
+	for m, indexBatch := range ready {
+		im.logger.Info("Index batch is ready to be uploaded", zap.Int("minute", m))
+		if err := im.uploadBatch(ctx, indexBatch); err != nil {
+			im.logger.Error("Failed to upload index batch", zap.Error(err))
+			// Put the batch back under lock so a subsequent rollover
+			// retries instead of silently losing data.
+			im.mutex.Lock()
+			if _, exists := im.minuteIndexBatches[m]; !exists {
+				im.minuteIndexBatches[m] = indexBatch
+			}
+			im.mutex.Unlock()
+			break
+		}
+		im.logger.Info("Deleted index batch for the minute", zap.Int("minute", m))
 	}
 
 	// Initialize an empty index batch for the current minute if it doesn't exist
