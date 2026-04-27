@@ -1,5 +1,9 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.16] - 2026-04-27
+
+- fix: eliminate data race in rolloverIndexes on minuteIndexBatches (#70) | [Deepak Nagaraj](https://github.com/ndeepak-baseten)
+
 ## [v0.0.15] - 2026-04-21
 
 - chore: Update OTel dependency to v0.150.0 (#68) | [Ian Adams](https://github.com/mrsillydog)
