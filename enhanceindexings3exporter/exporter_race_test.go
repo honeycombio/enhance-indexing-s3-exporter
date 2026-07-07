@@ -159,3 +159,60 @@ func TestRolloverIndexes_RetainsBatchOnUploadFailure(t *testing.T) {
 	assert.NotContains(t, im.minuteIndexBatches, oldMinute,
 		"batch must be removed from the map after a successful upload")
 }
+
+// TestRolloverIndexes_ConcurrentWithAddToNonCurrentMinute guards against a nil
+// dereference in addTracesToIndex/addLogsToIndex. They must create and read the
+// batch under a single lock; otherwise a concurrent rollover (which deletes
+// ready batches under the lock) can remove it in the gap, leaving a nil map
+// entry that panics on use.
+//
+// Writes target a non-current minute so rolloverIndexes actually deletes their
+// batch every tick, unlike TestRolloverIndexes_ConcurrentWithAddTraces which
+// only writes the current minute (never deleted by rollover) and so does not
+// exercise this path.
+func TestRolloverIndexes_ConcurrentWithAddToNonCurrentMinute(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{
+		IndexedFields: []fieldName{"user.id"},
+		MarshalerName: awss3exporter.OtlpJSON,
+		S3Uploader: awss3exporter.S3UploaderConfig{
+			Compression: "gzip",
+		},
+	}
+
+	im := NewIndexManager(config, logger)
+	im.s3Writer = noopS3Writer{}
+
+	ctx := context.Background()
+	traces := createTestTraces()
+
+	// A minute that is never the current minute, so rollover always deletes
+	// the batch the writers keep re-creating.
+	pastMinute := (time.Now().UTC().Minute() + 30) % 60
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					im.addTracesToIndex(traces, "s3key-past", pastMinute)
+				}
+			}
+		}()
+	}
+
+	for i := 0; i < 200; i++ {
+		im.rolloverIndexes(ctx)
+	}
+
+	close(stop)
+	wg.Wait()
+
+	require.NotNil(t, im)
+}
