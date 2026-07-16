@@ -1,4 +1,8 @@
 # Enhance Indexing S3 Exporter Changelog
+## [v0.0.22] - 2026-07-16
+
+- chore: OTel v0.156.0 (#86) | [Dakota Paasman](https://github.com/dpaasman00)
+
 ## [v0.0.21] - 2026-06-30
 
 - fix: Update OTel in `cmd/otelcol` (#83) | [Dakota Paasman](https://github.com/dpaasman00)
