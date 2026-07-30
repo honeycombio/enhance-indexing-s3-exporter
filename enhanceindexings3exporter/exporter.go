@@ -118,6 +118,49 @@ func buildIndexesFromAttributes(
 	return fv
 }
 
+// setMissingSpanTimestamps backfills the given timestamp onto any span whose
+// start or end timestamp is unset (epoch 0). The Bulk Ingest service that
+// Enhance uses does not stamp an arrival time on records that arrive without
+// one, so they would otherwise be stored at the Unix epoch (1970-01-01). Both
+// start and end are checked independently because such records arrive with both
+// zeroed; guarding end avoids producing a negative duration when only start was
+// backfilled.
+func setMissingSpanTimestamps(traces ptrace.Traces, now pcommon.Timestamp) {
+	for i := 0; i < traces.ResourceSpans().Len(); i++ {
+		rs := traces.ResourceSpans().At(i)
+		for j := 0; j < rs.ScopeSpans().Len(); j++ {
+			ss := rs.ScopeSpans().At(j)
+			for k := 0; k < ss.Spans().Len(); k++ {
+				span := ss.Spans().At(k)
+				if span.StartTimestamp() == 0 {
+					span.SetStartTimestamp(now)
+				}
+				if span.EndTimestamp() == 0 {
+					span.SetEndTimestamp(now)
+				}
+			}
+		}
+	}
+}
+
+// setMissingLogTimestamps backfills the given timestamp onto any log record
+// whose timestamp is unset (epoch 0), for the same reason as
+// setMissingSpanTimestamps.
+func setMissingLogTimestamps(logs plog.Logs, now pcommon.Timestamp) {
+	for i := 0; i < logs.ResourceLogs().Len(); i++ {
+		rl := logs.ResourceLogs().At(i)
+		for j := 0; j < rl.ScopeLogs().Len(); j++ {
+			sl := rl.ScopeLogs().At(j)
+			for k := 0; k < sl.LogRecords().Len(); k++ {
+				lr := sl.LogRecords().At(k)
+				if lr.Timestamp() == 0 {
+					lr.SetTimestamp(now)
+				}
+			}
+		}
+	}
+}
+
 func newEnhanceIndexingS3Exporter(cfg *Config, logger *zap.Logger, indexManager *IndexManager) (*enhanceIndexingS3Exporter, error) {
 	var traceMarshaler ptrace.Marshaler
 	var logMarshaler plog.Marshaler
@@ -631,6 +674,10 @@ func (e *enhanceIndexingS3Exporter) consumeTraces(ctx context.Context, traces pt
 	}
 	e.logger.Info("Consuming traces", logFields...)
 
+	// Stamp the processing time onto any span that arrived without a timestamp
+	// so it is not stored at the Unix epoch (1970-01-01).
+	setMissingSpanTimestamps(traces, pcommon.NewTimestampFromTime(time.Now()))
+
 	// Marshal the traces
 	buf, err := e.traceMarshaler.MarshalTraces(traces)
 	if err != nil {
@@ -667,6 +714,10 @@ func (e *enhanceIndexingS3Exporter) consumeLogs(ctx context.Context, logs plog.L
 		logFields = append(logFields, zap.String("api_endpoint", e.config.APIEndpoint))
 	}
 	e.logger.Info("Consuming logs", logFields...)
+
+	// Stamp the processing time onto any log record that arrived without a
+	// timestamp so it is not stored at the Unix epoch (1970-01-01).
+	setMissingLogTimestamps(logs, pcommon.NewTimestampFromTime(time.Now()))
 
 	// Marshal the logs
 	buf, err := e.logMarshaler.MarshalLogs(logs)
