@@ -554,6 +554,43 @@ func TestSetMissingSpanTimestamps(t *testing.T) {
 		assert.Equal(t, validEnd, span.EndTimestamp())
 	})
 
+	t.Run("zero span event timestamp is backfilled from the span start", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+		span.SetEndTimestamp(validEnd)
+		event := span.Events().AppendEmpty()
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validStart, event.Timestamp())
+	})
+
+	t.Run("zero span event on a zero span uses the backfilled start", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		event := span.Events().AppendEmpty()
+
+		setMissingSpanTimestamps(traces, now)
+
+		// The span event must not predate its span, which would produce a
+		// negative time since span start once translated for ingest.
+		assert.Equal(t, now, span.StartTimestamp())
+		assert.Equal(t, now, event.Timestamp())
+	})
+
+	t.Run("populated span event timestamp is untouched", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+		event := span.Events().AppendEmpty()
+		event.SetTimestamp(validEnd)
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validEnd, event.Timestamp())
+	})
+
 	t.Run("only zero-timestamp spans are backfilled across resources and scopes", func(t *testing.T) {
 		traces := ptrace.NewTraces()
 		ss := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()

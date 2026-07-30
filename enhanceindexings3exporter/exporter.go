@@ -125,6 +125,12 @@ func buildIndexesFromAttributes(
 // start and end are checked independently because such records arrive with both
 // zeroed; guarding end avoids producing a negative duration when only start was
 // backfilled.
+//
+// Span events carry their own timestamp and are stored as separate events, so
+// they need the same treatment. They are backfilled from the span's start
+// rather than from now, mirroring how span links inherit their parent span's
+// timestamp, so that an event stays within its span and does not report a
+// negative time since span start.
 func setMissingSpanTimestamps(traces ptrace.Traces, now pcommon.Timestamp) {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		rs := traces.ResourceSpans().At(i)
@@ -137,6 +143,14 @@ func setMissingSpanTimestamps(traces ptrace.Traces, now pcommon.Timestamp) {
 				}
 				if span.EndTimestamp() == 0 {
 					span.SetEndTimestamp(now)
+				}
+
+				events := span.Events()
+				for e := 0; e < events.Len(); e++ {
+					event := events.At(e)
+					if event.Timestamp() == 0 {
+						event.SetTimestamp(span.StartTimestamp())
+					}
 				}
 			}
 		}
