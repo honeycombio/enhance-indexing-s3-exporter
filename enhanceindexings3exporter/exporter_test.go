@@ -3,6 +3,7 @@ package enhanceindexings3exporter
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"testing"
 	"time"
 
@@ -513,4 +514,185 @@ func createTestLogs() plog.Logs {
 	lr.Attributes().PutStr("service.name", "test-service")
 
 	return logs
+}
+
+func TestSetMissingSpanTimestamps(t *testing.T) {
+	now := pcommon.NewTimestampFromTime(time.Unix(1700000000, 0))
+	validStart := pcommon.NewTimestampFromTime(time.Unix(1600000000, 0))
+	validEnd := pcommon.NewTimestampFromTime(time.Unix(1600000001, 0))
+
+	t.Run("both timestamps zero are backfilled", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, now, span.StartTimestamp())
+		assert.Equal(t, now, span.EndTimestamp())
+	})
+
+	t.Run("valid start with zero end backfills only end", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validStart, span.StartTimestamp())
+		assert.Equal(t, now, span.EndTimestamp())
+	})
+
+	t.Run("fully populated span is untouched", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+		span.SetEndTimestamp(validEnd)
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validStart, span.StartTimestamp())
+		assert.Equal(t, validEnd, span.EndTimestamp())
+	})
+
+	t.Run("zero span event timestamp is backfilled from the span start", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+		span.SetEndTimestamp(validEnd)
+		event := span.Events().AppendEmpty()
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validStart, event.Timestamp())
+	})
+
+	t.Run("zero span event on a zero span uses the backfilled start", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		event := span.Events().AppendEmpty()
+
+		setMissingSpanTimestamps(traces, now)
+
+		// The span event must not predate its span, which would produce a
+		// negative time since span start once translated for ingest.
+		assert.Equal(t, now, span.StartTimestamp())
+		assert.Equal(t, now, event.Timestamp())
+	})
+
+	t.Run("populated span event timestamp is untouched", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+		span.SetStartTimestamp(validStart)
+		event := span.Events().AppendEmpty()
+		event.SetTimestamp(validEnd)
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, validEnd, event.Timestamp())
+	})
+
+	t.Run("only zero-timestamp spans are backfilled across resources and scopes", func(t *testing.T) {
+		traces := ptrace.NewTraces()
+		ss := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty()
+		zeroSpan := ss.Spans().AppendEmpty()
+		validSpan := ss.Spans().AppendEmpty()
+		validSpan.SetStartTimestamp(validStart)
+		validSpan.SetEndTimestamp(validEnd)
+
+		setMissingSpanTimestamps(traces, now)
+
+		assert.Equal(t, now, zeroSpan.StartTimestamp())
+		assert.Equal(t, now, zeroSpan.EndTimestamp())
+		assert.Equal(t, validStart, validSpan.StartTimestamp())
+		assert.Equal(t, validEnd, validSpan.EndTimestamp())
+	})
+}
+
+func TestSetMissingLogTimestamps(t *testing.T) {
+	now := pcommon.NewTimestampFromTime(time.Unix(1700000000, 0))
+	valid := pcommon.NewTimestampFromTime(time.Unix(1600000000, 0))
+
+	t.Run("zero timestamp is backfilled", func(t *testing.T) {
+		logs := plog.NewLogs()
+		lr := logs.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+
+		setMissingLogTimestamps(logs, now)
+
+		assert.Equal(t, now, lr.Timestamp())
+	})
+
+	t.Run("populated timestamp is untouched", func(t *testing.T) {
+		logs := plog.NewLogs()
+		lr := logs.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+		lr.SetTimestamp(valid)
+
+		setMissingLogTimestamps(logs, now)
+
+		assert.Equal(t, valid, lr.Timestamp())
+	})
+}
+
+func TestConsumeTracesStampsMissingTimestamp(t *testing.T) {
+	cfg := &Config{
+		S3Uploader:    awss3exporter.S3UploaderConfig{Region: "us-east-1", S3Bucket: "test-bucket"},
+		MarshalerName: awss3exporter.OtlpProtobuf,
+		IndexedFields: []fieldName{"user.id"},
+	}
+	logger := zap.NewNop()
+	indexManager := NewIndexManager(cfg, logger)
+	exporter, err := newEnhanceIndexingS3Exporter(cfg, logger, indexManager)
+	require.NoError(t, err)
+
+	mockWriter := createMockS3Writer(&cfg.S3Uploader, cfg.MarshalerName, logger)
+	exporter.s3Writer = mockWriter
+	exporter.indexManager.s3Writer = mockWriter
+	mockUploader := mockWriter.uploader.(*mockS3Uploader)
+	exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
+		time.Now().UTC().Minute(): {fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys)},
+	}
+
+	before := pcommon.NewTimestampFromTime(time.Now())
+	require.NoError(t, exporter.consumeTraces(context.Background(), createTestTraces()))
+
+	require.Len(t, mockUploader.uploadCalls, 1)
+	body, err := io.ReadAll(mockUploader.uploadCalls[0].input.Body)
+	require.NoError(t, err)
+	stored, err := (&ptrace.ProtoUnmarshaler{}).UnmarshalTraces(body)
+	require.NoError(t, err)
+
+	span := stored.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0)
+	assert.GreaterOrEqual(t, span.StartTimestamp(), before)
+	assert.GreaterOrEqual(t, span.EndTimestamp(), before)
+}
+
+func TestConsumeLogsStampsMissingTimestamp(t *testing.T) {
+	cfg := &Config{
+		S3Uploader:    awss3exporter.S3UploaderConfig{Region: "us-east-1", S3Bucket: "test-bucket"},
+		MarshalerName: awss3exporter.OtlpProtobuf,
+		IndexedFields: []fieldName{"customer.id"},
+	}
+	logger := zap.NewNop()
+	indexManager := NewIndexManager(cfg, logger)
+	exporter, err := newEnhanceIndexingS3Exporter(cfg, logger, indexManager)
+	require.NoError(t, err)
+
+	mockWriter := createMockS3Writer(&cfg.S3Uploader, cfg.MarshalerName, logger)
+	exporter.s3Writer = mockWriter
+	exporter.indexManager.s3Writer = mockWriter
+	mockUploader := mockWriter.uploader.(*mockS3Uploader)
+	exporter.indexManager.minuteIndexBatches = map[int]*MinuteIndexBatch{
+		time.Now().UTC().Minute(): {fieldIndexes: make(map[fieldName]map[fieldValue]fieldS3Keys)},
+	}
+
+	before := pcommon.NewTimestampFromTime(time.Now())
+	require.NoError(t, exporter.consumeLogs(context.Background(), createTestLogs()))
+
+	require.Len(t, mockUploader.uploadCalls, 1)
+	body, err := io.ReadAll(mockUploader.uploadCalls[0].input.Body)
+	require.NoError(t, err)
+	stored, err := (&plog.ProtoUnmarshaler{}).UnmarshalLogs(body)
+	require.NoError(t, err)
+
+	lr := stored.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	assert.GreaterOrEqual(t, lr.Timestamp(), before)
 }
