@@ -1,5 +1,9 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.24] - 2026-08-05
+
+- feat(exporter): backfill processing-time timestamp for events missing one (#90) | [Maggy Prajapati](https://github.com/mupraj10)
+
 ## [v0.0.23] - 2026-07-27
 
 - chore: OTel v0.157.0 (#88) | [Ian Adams](https://github.com/mrsillydog)
