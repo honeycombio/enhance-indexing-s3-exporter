@@ -1,5 +1,9 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.26] - 2026-08-25
+
+- chore: OTel v0.159.0/v1.65.0 (#94) | [Dakota Paasman](https://github.com/dpaasman00)
+
 ## [v0.0.25] - 2026-08-07
 
 - chore: OTel v0.158.0 (#92) | [Ian Adams](https://github.com/mrsillydog)
