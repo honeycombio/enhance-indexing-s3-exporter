@@ -239,13 +239,16 @@ func TestAddTracesToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
 
-	// Check configured field indexing
+	// Check configured field indexing. The index is inclusive: the file
+	// contains user.id at all three levels (resource, scope, span), so it must
+	// be listed under every value, not just the highest-precedence one
+	// (COR-3947).
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user123")], s3Key)
-
-	// Check that attribute precedence is respected, Item > Scope > Resource
-	assert.NotContains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user456"))
-	assert.NotContains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user789"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user456"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user456")], s3Key)
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")], fieldValue("user789"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("user.id")][fieldValue("user789")], s3Key)
 
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
@@ -290,17 +293,64 @@ func TestAddLogsToIndex(t *testing.T) {
 	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")], fieldValue("test-service"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("service.name")][fieldValue("test-service")], s3Key)
 
-	// Check configured field indexing
+	// Check configured field indexing. The index is inclusive: the file
+	// contains customer.id at all three levels (resource, scope, record), so it
+	// must be listed under every value, not just the highest-precedence one
+	// (COR-3947).
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust123"))
 	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust123")], s3Key)
-
-	// Check that attribute precedence is respected, Item > Scope > Resource
-	assert.NotContains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust456"))
-	assert.NotContains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust789"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust456"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust456")], s3Key)
+	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")], fieldValue("cust789"))
+	assert.Contains(t, batch.fieldIndexes[fieldName("customer.id")][fieldValue("cust789")], s3Key)
 
 	// Check that non-configured fields are not indexed
 	assert.NotContains(t, batch.fieldIndexes, fieldName("request.id"))
 
+}
+
+// TestInclusiveIndexAcrossTenants is the COR-3947 regression test. A single S3
+// file can batch spans for many tenants. Before the fix, the precedence-delete
+// logic evicted a tenant's org.name from the index whenever another value
+// (same field at a higher level, or a colliding auto-indexed field) was seen
+// for the same file, so index-based rehydrate returned zero for that tenant
+// even though its data was in the file. Every value present must stay indexed.
+func TestInclusiveIndexAcrossTenants(t *testing.T) {
+	logger := zap.NewNop()
+	config := &Config{IndexedFields: []fieldName{"org.name"}}
+	indexManager := NewIndexManager(config, logger)
+	exporter, err := newEnhanceIndexingS3Exporter(config, logger, indexManager)
+	require.NoError(t, err)
+
+	s3Key := "traces-and-logs/year=2026/month=08/day=12/hour=01/minute=03/traces_uuid.binpb.gz"
+	minute := 3
+	exporter.indexManager.ensureMinuteBatch(minute)
+
+	traces := ptrace.NewTraces()
+
+	// Resource A: org.name at resource only. A lone value like this used to
+	// become the shared previousFV and get deleted from the index at the next
+	// level/resource.
+	rsA := traces.ResourceSpans().AppendEmpty()
+	rsA.Resource().Attributes().PutStr("org.name", "crypto.com 2")
+	rsA.ScopeSpans().AppendEmpty().Spans().AppendEmpty().
+		SetTraceID(pcommon.TraceID([16]byte{1}))
+
+	// Resource B: org.name at resource AND a different org.name at the span
+	// (higher precedence). Both tenants are genuinely present in the file.
+	rsB := traces.ResourceSpans().AppendEmpty()
+	rsB.Resource().Attributes().PutStr("org.name", "binance_us")
+	spanB := rsB.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	spanB.SetTraceID(pcommon.TraceID([16]byte{2}))
+	spanB.Attributes().PutStr("org.name", "circle")
+
+	exporter.indexManager.addTracesToIndex(traces, s3Key, minute)
+
+	orgIndex := exporter.indexManager.minuteIndexBatches[minute].fieldIndexes[fieldName("org.name")]
+	for _, org := range []string{"crypto.com 2", "binance_us", "circle"} {
+		assert.Contains(t, orgIndex, fieldValue(org), "file must be indexed under %q", org)
+		assert.Contains(t, orgIndex[fieldValue(org)], s3Key, "s3 key missing for %q", org)
+	}
 }
 
 func TestMarshalIndex(t *testing.T) {
