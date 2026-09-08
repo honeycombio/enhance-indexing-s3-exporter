@@ -85,7 +85,7 @@ var automaticallyIndexedFields = []string{"service.name", "session.id"}
 // records (and, for bulk ingest, many tenants), so a value that appears only at
 // resource scope is still genuinely present in the file. Deleting it would make
 // the index under-report and cause index-based rehydrate to return zero results
-// for that value even though the data is in the file (COR-3947).
+// for that value even though the data is in the file.
 func buildIndexesFromAttributes(
 	currentBatch *MinuteIndexBatch,
 	attrs pcommon.Map,
