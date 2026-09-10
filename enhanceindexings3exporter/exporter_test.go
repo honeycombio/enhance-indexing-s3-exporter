@@ -307,13 +307,18 @@ func TestAddLogsToIndex(t *testing.T) {
 
 }
 
-// TestInclusiveIndexAcrossTenants covers the case where a single S3 file batches
-// records for many tenants. Before the fix, the precedence-delete logic evicted
-// a tenant's org.name from the index whenever another value (the same field at a
-// higher level, or a colliding auto-indexed field) was seen for the same file,
-// so index-based rehydrate returned zero for that tenant even though its data
-// was in the file. Every value present must stay indexed.
-func TestInclusiveIndexAcrossTenants(t *testing.T) {
+// TestInclusiveIndexAllAttributeLevels guards against dropping indexed values
+// that appear at more than one attribute level within a single S3 file. A file
+// can batch records for many tenants, so the same field can carry different
+// values at the resource, scope, and item levels; the file genuinely contains
+// all of them. The previous precedence-delete logic kept only the
+// highest-precedence value and evicted the rest, so index-based rehydrate
+// returned zero for the evicted values even though their data was in the file.
+//
+// This test sets org.name to a distinct value at each level of one chain, which
+// is exactly the shape the old logic collapsed to a single value; it must now
+// index the file under all three.
+func TestInclusiveIndexAllAttributeLevels(t *testing.T) {
 	logger := zap.NewNop()
 	config := &Config{IndexedFields: []fieldName{"org.name"}}
 	indexManager := NewIndexManager(config, logger)
@@ -325,27 +330,18 @@ func TestInclusiveIndexAcrossTenants(t *testing.T) {
 	exporter.indexManager.ensureMinuteBatch(minute)
 
 	traces := ptrace.NewTraces()
-
-	// Resource A: org.name at resource only. A lone value like this used to
-	// become the shared previousFV and get deleted from the index at the next
-	// level/resource.
-	rsA := traces.ResourceSpans().AppendEmpty()
-	rsA.Resource().Attributes().PutStr("org.name", "org-a")
-	rsA.ScopeSpans().AppendEmpty().Spans().AppendEmpty().
-		SetTraceID(pcommon.TraceID([16]byte{1}))
-
-	// Resource B: org.name at resource AND a different org.name at the span
-	// (higher precedence). Both tenants are genuinely present in the file.
-	rsB := traces.ResourceSpans().AppendEmpty()
-	rsB.Resource().Attributes().PutStr("org.name", "org-b")
-	spanB := rsB.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
-	spanB.SetTraceID(pcommon.TraceID([16]byte{2}))
-	spanB.Attributes().PutStr("org.name", "org-c")
+	rs := traces.ResourceSpans().AppendEmpty()
+	rs.Resource().Attributes().PutStr("org.name", "org-resource")
+	ss := rs.ScopeSpans().AppendEmpty()
+	ss.Scope().Attributes().PutStr("org.name", "org-scope")
+	span := ss.Spans().AppendEmpty()
+	span.SetTraceID(pcommon.TraceID([16]byte{1}))
+	span.Attributes().PutStr("org.name", "org-span")
 
 	exporter.indexManager.addTracesToIndex(traces, s3Key, minute)
 
 	orgIndex := exporter.indexManager.minuteIndexBatches[minute].fieldIndexes[fieldName("org.name")]
-	for _, org := range []string{"org-a", "org-b", "org-c"} {
+	for _, org := range []string{"org-resource", "org-scope", "org-span"} {
 		assert.Contains(t, orgIndex, fieldValue(org), "file must be indexed under %q", org)
 		assert.Contains(t, orgIndex[fieldValue(org)], s3Key, "s3 key missing for %q", org)
 	}
