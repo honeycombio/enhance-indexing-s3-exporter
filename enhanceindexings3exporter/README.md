@@ -91,13 +91,17 @@ exporters:
 
 **Note**: The `indexed_fields` configuration specifies which custom fields to index in addition to the automatically indexed fields (`trace.trace_id`, `service.name`, `session.id`). If `indexed_fields` is empty or not specified, only the automatic fields will be indexed.
 
-#### Field Value Precedence
+#### Field Value Indexing Across Attribute Levels
 
-When the same field appears in multiple attribute locations, values are resolved with the following precedence (highest to lowest):
-
-1. **Item attributes** (span attributes for traces, log record attributes for logs)
-2. **Instrumentation scope attributes**
-3. **Resource attributes**
+An indexed field is read from all three attribute levels — item attributes (span
+attributes for traces, log record attributes for logs), instrumentation scope
+attributes, and resource attributes. The index is an inclusive, file-level
+inverted index: it records which S3 files contain a given field value. When the
+same field carries different values at different levels within a file, the file
+is indexed under **every** value it contains, at any level — no attribute-level
+precedence is applied. A single S3 file batches many records, so a value present
+at any level is genuinely in the file and must remain findable when rehydrating
+by index.
 
 ### Configuration Validation
 
