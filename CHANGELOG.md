@@ -1,5 +1,9 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.29] - 2026-09-28
+
+- chore: OTel v0.161.0 (#100) | [Ian Adams](https://github.com/mrsillydog)
+
 ## [v0.0.28] - 2026-09-18
 
 - fix(exporter): index files under every value, not just highest-precedence (#96) | [Maggy Prajapati](https://github.com/mupraj10)
