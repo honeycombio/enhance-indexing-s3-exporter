@@ -41,8 +41,9 @@ type MinuteIndexBatch struct {
 // IndexManager manages shared index state across multiple exporters
 type IndexManager struct {
 	mutex              sync.RWMutex
-	startOnce          sync.Once
-	shutdownOnce       sync.Once
+	refs               int
+	stopped            bool
+	done               chan struct{}
 	minuteIndexBatches map[int]*MinuteIndexBatch
 	ticker             *time.Ticker
 	config             *Config
@@ -231,48 +232,73 @@ func (im *IndexManager) ensureMinuteBatchLocked(minute int) *MinuteIndexBatch {
 	return batch
 }
 
-// start initializes the IndexManager
+// start initializes the IndexManager on the first call. Exporters sharing the
+// manager each call start, and the manager stays running until all of them have
+// called shutdown.
 func (im *IndexManager) start(ctx context.Context, s3Writer S3WriterInterface) error {
-	im.startOnce.Do(func() {
-		im.s3Writer = s3Writer
+	im.mutex.Lock()
+	defer im.mutex.Unlock()
 
-		// Initialize an empty index batch for the current minute
-		minute := time.Now().UTC().Minute()
-		im.ensureMinuteBatch(minute)
-		im.startTimer(ctx)
-	})
+	im.refs++
+	if im.refs > 1 {
+		return nil
+	}
+
+	im.s3Writer = s3Writer
+
+	// Initialize an empty index batch for the current minute
+	im.ensureMinuteBatchLocked(time.Now().UTC().Minute())
+	im.startTimer(ctx)
 	return nil
 }
 
-// shutdown stops the IndexManager
+// isStopped reports whether the IndexManager has been shut down and can no
+// longer be used.
+func (im *IndexManager) isStopped() bool {
+	im.mutex.RLock()
+	defer im.mutex.RUnlock()
+	return im.stopped
+}
+
+// shutdown releases one reference to the IndexManager. The last release stops
+// the timer and uploads any pending indexes.
 func (im *IndexManager) shutdown(ctx context.Context) error {
-	im.shutdownOnce.Do(func() {
-		// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
-		if im.ticker != nil {
-			im.ticker.Stop()
-		}
+	im.mutex.Lock()
+	defer im.mutex.Unlock()
 
-		// TODO figure out if we need to wait for the upload to finish before continuing
+	if im.refs > 0 {
+		im.refs--
+	}
+	if im.refs > 0 || im.stopped {
+		return nil
+	}
+	im.stopped = true
 
-		// Upload any remaining batch data
-		im.mutex.Lock()
-		defer im.mutex.Unlock()
+	// Stop the minute ticker and upload any pending indexes. There might be an upload in progress.
+	if im.ticker != nil {
+		im.ticker.Stop()
+	}
+	if im.done != nil {
+		close(im.done)
+	}
 
-		if len(im.minuteIndexBatches) > 0 {
-			im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
-			for minute, batch := range im.minuteIndexBatches {
-				err := im.uploadBatch(ctx, batch)
-				if err != nil {
-					// Keep going so one failed batch does not strand the rest.
-					im.logger.Error("Failed to upload remaining index data", zap.Error(err), zap.Int("minute", minute))
-					continue
-				}
+	// TODO figure out if we need to wait for the upload to finish before continuing
 
-				im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
-				delete(im.minuteIndexBatches, minute)
+	// Upload any remaining batch data
+	if len(im.minuteIndexBatches) > 0 {
+		im.logger.Info("Uploading remaining index data", zap.Int("batchCount", len(im.minuteIndexBatches)))
+		for minute, batch := range im.minuteIndexBatches {
+			err := im.uploadBatch(ctx, batch)
+			if err != nil {
+				// Keep going so one failed batch does not strand the rest.
+				im.logger.Error("Failed to upload remaining index data", zap.Error(err), zap.Int("minute", minute))
+				continue
 			}
+
+			im.logger.Info("Uploaded index batch for the minute", zap.Int("minute", minute))
+			delete(im.minuteIndexBatches, minute)
 		}
-	})
+	}
 	return nil
 }
 
@@ -391,17 +417,23 @@ func (e *enhanceIndexingS3Exporter) isHoneycombExtensionPresent(host component.H
 // startTimer starts a timer that triggers every 30 seconds, which will check for
 // index batches that are ready to be uploaded and uploads them. It also initializes
 // an empty index batch for the current minute.
+// The caller must hold im.mutex.
 func (im *IndexManager) startTimer(ctx context.Context) {
 	im.logger.Info("Starting index batch timer")
 
 	// Set up a recurring timer for every 30 seconds - the ticker is stopped in the shutdown function
-	im.ticker = time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
+	done := make(chan struct{})
+	im.ticker = ticker
+	im.done = done
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-im.ticker.C:
+			case <-done:
+				return
+			case <-ticker.C:
 				// blocking so we don't have multiple rollovers running simultaneously
 				im.rolloverIndexes(ctx)
 			}
