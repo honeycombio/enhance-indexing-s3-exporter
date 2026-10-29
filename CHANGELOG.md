@@ -1,5 +1,11 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.32] - 2026-10-29
+
+- fix(config): keep valid partition idle_timeout in default queue batch (#108) | [Alaina Valenzuela](https://github.com/asdvalenzuela)
+- chore: bump Go to 1.26 in go.work, .tool-versions and Dockerfile (#107) | [Alaina Valenzuela](https://github.com/asdvalenzuela)
+- fix(exporter): restart index timer after in-place config reload (#106) | [Alaina Valenzuela](https://github.com/asdvalenzuela)
+
 ## [v0.0.31] - 2026-10-27
 
 - chore: Update OTel v0.163.0 (#104) | [Dakota Paasman](https://github.com/dpaasman00)
