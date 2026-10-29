@@ -1,0 +1,31 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Each module resolves ../index through its own replace directive, so build
+  # per module and do not depend on the go.work Go version.
+  GOWORK: "off"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: enhanceindexings3exporter/go.mod
+      - name: Test exporter
+        working-directory: enhanceindexings3exporter
+        run: go test -race ./...
+      - name: Build collector
+        working-directory: cmd/otelcol
+        run: go build -o /dev/null .

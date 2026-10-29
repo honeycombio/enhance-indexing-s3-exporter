@@ -113,6 +113,32 @@ func TestConfigDefaultQueueBatchConfigValues(t *testing.T) {
 	assert.Equal(t, config.QueueBatchConfig.Get().Batch.Get().Sizer, expectedBatchConfig.Sizer)
 }
 
+// The collector validates nested config such as sending_queue itself, so
+// Config.Validate alone does not cover the default batch settings.
+func TestConfigDefaultsPassCollectorValidation(t *testing.T) {
+	t.Run("minimal config", func(t *testing.T) {
+		config := createDefaultConfig().(*Config)
+		config.S3Uploader.S3Bucket = "test-bucket"
+
+		require.NoError(t, confmap.Validate(config))
+	})
+
+	t.Run("partial sending_queue override", func(t *testing.T) {
+		config := createDefaultConfig().(*Config)
+		config.S3Uploader.S3Bucket = "test-bucket"
+
+		conf := confmap.NewFromStringMap(map[string]any{
+			"sending_queue": map[string]any{
+				"batch": map[string]any{"flush_timeout": "10s"},
+			},
+		})
+		require.NoError(t, conf.Unmarshal(config))
+
+		assert.Equal(t, 10*time.Second, config.QueueBatchConfig.Get().Batch.Get().FlushTimeout)
+		require.NoError(t, confmap.Validate(config))
+	})
+}
+
 func TestConfigDefaultUsageReportingInterval(t *testing.T) {
 	config := createDefaultConfig().(*Config)
 	assert.Equal(t, 1*time.Minute, config.UsageReportingInterval)
