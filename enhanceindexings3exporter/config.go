@@ -75,12 +75,14 @@ func createDefaultConfig() component.Config {
 	queueConfig.QueueSize = 500000
 
 	// Set a sensible default values for the queue batch if not configured
-	queueConfig.Batch = configoptional.Some(exporterhelper.BatchConfig{
-		MinSize:      50000,
-		MaxSize:      50000,
-		Sizer:        exporterhelper.RequestSizerTypeItems,
-		FlushTimeout: 30 * time.Second,
-	})
+	// Start from the upstream default so fields we do not set, such as the
+	// partition idle timeout, keep a valid value.
+	batchConfig := exporterhelper.NewDefaultBatchConfig()
+	batchConfig.MinSize = 50000
+	batchConfig.MaxSize = 50000
+	batchConfig.Sizer = exporterhelper.RequestSizerTypeItems
+	batchConfig.FlushTimeout = 30 * time.Second
+	queueConfig.Batch = configoptional.Some(batchConfig)
 
 	return &Config{
 		QueueBatchConfig: configoptional.Some(queueConfig),
