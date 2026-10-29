@@ -14,7 +14,7 @@ This exporter extends the OpenTelemetry AWS S3 exporter with both automatic and 
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - Docker (for local development)
 - AWS credentials configured (to interact with AWS S3 buckets)
 - Honeycomb Management API key and secret with `enhance:write` scope

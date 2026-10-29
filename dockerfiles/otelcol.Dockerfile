@@ -1,4 +1,4 @@
-FROM golang:1.24 as builder
+FROM golang:1.26 as builder
 ENV AWS_ACCESS_KEY_ID=minioadmin
 ENV AWS_SECRET_ACCESS_KEY=minioadmin
 ENV GOPRIVATE=github.com/honeycombio/enhance-indexing-s3-exporter
