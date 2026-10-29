@@ -1,12 +1,16 @@
 package enhanceindexings3exporter
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestGetOrCreateIndexManagerConcurrency(t *testing.T) {
@@ -129,4 +133,37 @@ func TestIndexManagersInitializationRace(t *testing.T) {
 	if indexManagers == nil {
 		t.Error("Expected indexManagers map to be initialized")
 	}
+}
+
+func TestIndexManagerRestartsAfterConfigReload(t *testing.T) {
+	indexManagers = nil
+	indexManagersOnce = sync.Once{}
+
+	core, logs := observer.New(zap.InfoLevel)
+	logger := zap.New(core)
+	ctx := context.Background()
+	id := component.MustNewID("reload_test")
+
+	// The traces and logs exporters of one pipeline share a manager.
+	tracesManager := getOrCreateIndexManager(id, &Config{}, logger)
+	logsManager := getOrCreateIndexManager(id, &Config{}, logger)
+	require.Same(t, tracesManager, logsManager)
+	require.NoError(t, tracesManager.start(ctx, noopS3Writer{}))
+	require.NoError(t, logsManager.start(ctx, noopS3Writer{}))
+
+	// Shutting down one signal must not stop the timer for the other.
+	require.NoError(t, tracesManager.shutdown(ctx))
+	assert.False(t, logsManager.isStopped())
+	require.NoError(t, logsManager.shutdown(ctx))
+	assert.True(t, tracesManager.isStopped())
+
+	// An in-place config reload rebuilds the exporters with the same component ID.
+	reloadedConfig := &Config{}
+	reloadedManager := getOrCreateIndexManager(id, reloadedConfig, logger)
+	require.NotSame(t, tracesManager, reloadedManager)
+	require.NoError(t, reloadedManager.start(ctx, noopS3Writer{}))
+	t.Cleanup(func() { _ = reloadedManager.shutdown(ctx) })
+
+	assert.Equal(t, 2, logs.FilterMessage("Starting index batch timer").Len())
+	assert.Same(t, reloadedConfig, reloadedManager.config)
 }

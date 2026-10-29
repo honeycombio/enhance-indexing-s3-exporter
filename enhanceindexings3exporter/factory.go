@@ -22,7 +22,7 @@ var (
 	indexManagersOnce  sync.Once
 )
 
-// getOrCreateIndexManager returns an existing IndexManager for the component ID or creates a new one
+// getOrCreateIndexManager returns the running IndexManager for the component ID or creates a new one
 func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger) *IndexManager {
 	indexManagersMutex.Lock()
 	defer indexManagersMutex.Unlock()
@@ -32,7 +32,9 @@ func getOrCreateIndexManager(id component.ID, config *Config, logger *zap.Logger
 		indexManagers = make(map[component.ID]*IndexManager)
 	})
 
-	if indexManager, exists := indexManagers[id]; exists {
+	// A stopped manager belongs to a previous instance of this exporter, such as
+	// before an in-place config reload, so build a fresh one with the new config.
+	if indexManager, exists := indexManagers[id]; exists && !indexManager.isStopped() {
 		return indexManager
 	}
 
