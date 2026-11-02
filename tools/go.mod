@@ -1,6 +1,6 @@
 module github.com/honeycombio/enhance-indexing-s3-exporter/tools
 
-go 1.24
+go 1.26.10
 
 replace github.com/honeycombio/enhance-indexing-s3-exporter/index => ../index
 
