@@ -1,5 +1,10 @@
 # Enhance Indexing S3 Exporter Changelog
 
+## [v0.0.33] = 2026-11-02
+
+- chore: OTel v0.164.1 (#111) | [Ian Adams](https://github.com/mrsillydog)
+- chore: Bump Go to 1.26.10 (#110) | [Ian Adams](https://github.com/mrsillydog)
+
 ## [v0.0.32] - 2026-10-29
 
 - fix(config): keep valid partition idle_timeout in default queue batch (#108) | [Alaina Valenzuela](https://github.com/asdvalenzuela)
