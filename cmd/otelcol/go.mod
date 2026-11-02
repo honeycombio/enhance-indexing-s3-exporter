@@ -1,6 +1,6 @@
 module github.com/honeycombio/enhance-indexing-s3-exporter/cmd/otelcol
 
-go 1.26.0
+go 1.26.10
 
 replace (
 	github.com/honeycombio/enhance-indexing-s3-exporter/enhanceindexings3exporter => ../../enhanceindexings3exporter
